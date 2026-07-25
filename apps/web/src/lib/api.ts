@@ -178,10 +178,12 @@ export interface Citation {
   quote: string;
 }
 
+export type Confidence = "grounded" | "partial" | "not_found" | "error";
+
 export interface ChatAnswer {
   answer: string;
   citations: Citation[];
-  confidence: "grounded" | "partial" | "not_found";
+  confidence: Confidence;
   sessionId: string;
   runId: string;
 }
@@ -192,7 +194,7 @@ export interface ChatHistory {
     role: "user" | "assistant";
     content: string;
     citations: Citation[];
-    confidence: "grounded" | "partial" | "not_found" | null;
+    confidence: Confidence | null;
   }>;
 }
 

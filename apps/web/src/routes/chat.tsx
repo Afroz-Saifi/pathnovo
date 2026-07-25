@@ -13,13 +13,14 @@ interface Msg {
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
-  confidence?: "grounded" | "partial" | "not_found";
+  confidence?: "grounded" | "partial" | "not_found" | "error";
 }
 
 const CONF_VARIANT = {
   grounded: "success",
   partial: "warning",
   not_found: "muted",
+  error: "destructive",
 } as const;
 
 export function ChatPage() {

@@ -71,21 +71,47 @@ export class ChatService {
           ? `\n\nThe user asked to enumerate. The context contains ${retrieved.chunks.length} of ${retrieved.enumTotal} matching changes. List every one in the context; ${retrieved.enumCapped ? `state that there are ${retrieved.enumTotal} in total and these are the first ${retrieved.chunks.length}` : "this is the complete set"}.`
           : "";
       const userPrompt = `Context blocks:\n${context}${enumNote}\n\nQuestion: ${question}`;
-      // Enumerations need more room to list every item.
-      const maxOutput = retrieved.enumTotal !== undefined ? Math.max(this.config.llmMaxOutputTokens, 3000) : this.config.llmMaxOutputTokens;
+      // Reasoning models (o1/o3/gpt-5) reject a custom temperature and spend
+      // the token budget on hidden reasoning, so give them much more room and
+      // omit temperature.
+      const isReasoning = /^(o1|o3|gpt-5)/i.test(this.config.llmModel);
+      const baseMax = retrieved.enumTotal !== undefined ? Math.max(this.config.llmMaxOutputTokens, 3000) : this.config.llmMaxOutputTokens;
+      const maxOutput = isReasoning ? Math.max(baseMax, 8000) : baseMax;
+
       await run.emit("llm_call_started", {
         "gen_ai.system": this.config.llmProvider,
         "gen_ai.request.model": this.config.llmModel,
       });
       const t0 = Date.now();
-      const { object, usage } = await generateObject({
-        model: resolveChatModel(this.config.llmProvider, this.config.llmModel),
-        schema: AnswerSchema,
-        temperature: this.config.llmTemperature,
-        maxTokens: maxOutput,
-        system: SYSTEM_PROMPT,
-        prompt: userPrompt,
-      });
+
+      const runGen = () =>
+        generateObject({
+          model: resolveChatModel(this.config.llmProvider, this.config.llmModel),
+          schema: AnswerSchema,
+          maxTokens: maxOutput,
+          system: SYSTEM_PROMPT,
+          prompt: userPrompt,
+          ...(isReasoning ? {} : { temperature: this.config.llmTemperature }),
+        });
+
+      // A model can return an unparseable response; retry once, then degrade
+      // gracefully to a friendly "couldn't answer" rather than hard-failing.
+      let object: z.infer<typeof AnswerSchema>;
+      let usage: { promptTokens?: number; completionTokens?: number } | undefined;
+      try {
+        const res = await runGen();
+        object = res.object;
+        usage = res.usage;
+      } catch {
+        try {
+          const res = await runGen();
+          object = res.object;
+          usage = res.usage;
+        } catch (err) {
+          return this.gracefulFailure(run, comparisonId, question, err as Error, sessionId, t0);
+        }
+      }
+
       const inTok = usage?.promptTokens ?? 0;
       const outTok = usage?.completionTokens ?? 0;
       await run.emit(
@@ -145,6 +171,29 @@ export class ChatService {
     if (confidence === "grounded" && valid.length < object.citations.length) confidence = "partial";
     if (confidence !== "not_found" && valid.length === 0) confidence = "not_found";
     return { citations: valid, confidence };
+  }
+
+  /** Degrade a model/parse failure into a friendly, traced answer (no hard error). */
+  private async gracefulFailure(
+    run: Awaited<ReturnType<RunService["start"]>>,
+    comparisonId: string,
+    question: string,
+    err: Error,
+    sessionId: string | undefined,
+    t0: number,
+  ) {
+    await run.emit(
+      "stage_failed",
+      { stage: "llm_call_completed", error_type: err.name || "LlmError", message: err.message },
+      { durationMs: Date.now() - t0 },
+    );
+    const answer =
+      "I couldn't produce a grounded answer for that — the model returned an unparseable response. " +
+      "Try rephrasing, or switch the chat model to gpt-4o-mini in Config.";
+    const session = await this.resolveSession(comparisonId, sessionId);
+    await this.persistTurn(session.id, question, answer, [], "error");
+    await run.finish("ok", { comparisonId });
+    return { answer, citations: [] as Citation[], confidence: "error", sessionId: session.id, runId: run.runId };
   }
 
   /** Most-recent chat session for a comparison, with its messages (for reload). */

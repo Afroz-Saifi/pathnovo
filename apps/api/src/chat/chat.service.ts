@@ -42,21 +42,67 @@ const PAGINATION_Q = /\b(more|next|continue|rest|following|another|remaining)\b/
 const STATUS_Q = /(just these|that'?s it|is that all|anything else|any other|all of them|nothing else|complete\?)/i;
 const LIST_CUE_Q = /\b(list|every|each|enumerate|how many|show me|give me|any (more|other)|other than|all)\b/i;
 
+/** "how many …" wants a number, not a list. */
+const COUNT_Q = /\b(how many|how much|count of|count|number of|total)\b/i;
+
+/** Item kinds a user might name in a question. */
+const KIND_WORDS: Array<[RegExp, string, string]> = [
+  [/\b(draw|geometr|shape|symbol|valve|pipe route)/i, "geometry", "drawing/geometry element"],
+  [/\bnotes?\b/i, "note", "note"],
+  [/\b(tags?|equipment|instrument)\b/i, "tag", "tag"],
+  [/\b(line specs?|line numbers?|line ids?|specs?)\b/i, "line_spec", "line spec"],
+  [/\b(dimensions?|sizes?)\b/i, "dimension", "dimension"],
+  [/\b(cells?|nozzles?)\b/i, "table_cell", "cell"],
+];
+
+function itemKindOf(q: string): { kind: string; label: string } | null {
+  for (const [re, kind, label] of KIND_WORDS) if (re.test(q)) return { kind, label };
+  return null;
+}
+
+/** Reader-significance order for enumeration: identifiers first, loose text last. */
+const KIND_PRIORITY = ["tag", "line_spec", "note", "dimension", "table_cell", "symbol", "geometry", "text"];
+const KIND_RANK = (k: string): number => {
+  const i = KIND_PRIORITY.indexOf(k);
+  return i === -1 ? KIND_PRIORITY.length : i;
+};
+
+/** Human labels for item kinds, used in count breakdowns. */
+const KIND_LABELS: Record<string, string> = {
+  geometry: "drawing/geometry elements",
+  note: "notes",
+  tag: "tags",
+  line_spec: "line specs",
+  dimension: "dimensions",
+  table_cell: "cells",
+  symbol: "symbols",
+  text: "text items",
+};
+
 function enumCategory(q: string): EnumCat | null {
   if (/\bmov/i.test(q)) return "moved";
   if (/\b(remov|delet)/i.test(q)) return "removed";
   if (/\b(add|new|addition)/i.test(q)) return "added";
-  if (/\b(modif|chang|updat|edit|revis)/i.test(q)) return "modified";
+  // Note: bare "change(s)" means ALL changes ("what changed?"), so only explicit
+  // modification words select the modified category.
+  if (/\b(modif|updat|edit|revis|changed to)/i.test(q)) return "modified";
   return null;
 }
+
+/**
+ * Any word that refers to the delta. Used for ROUTING (does this question ask
+ * about changes at all?) — distinct from enumCategory, which picks a specific
+ * category and deliberately ignores bare "change(s)".
+ */
+const CHANGE_WORD = /\b(chang|add|remov|delet|modif|revis|mov|updat|new)/i;
 
 /** A bulk enumeration / pagination request (vs. a specific, answerable question). */
 function isEnumerationQuestion(q: string): boolean {
   if (SPATIAL_Q.test(q)) return false;
   if (PAGINATION_Q.test(q)) return true;
-  const cat = enumCategory(q);
+  if (COUNT_Q.test(q)) return true;
   // No trailing \b — "whats removed?" must match as well as "what is removed?".
-  return LIST_CUE_Q.test(q) || (cat !== null && /\b(what|which|any|tell)/i.test(q));
+  return LIST_CUE_Q.test(q) || (CHANGE_WORD.test(q) && /\b(what|which|any|tell)/i.test(q));
 }
 
 /** Prisma where-filter for a change category. */
@@ -234,6 +280,39 @@ export class ChatService {
       }));
   }
 
+  /** Deterministic count answer, with a per-kind breakdown when no kind is named. */
+  private async countAnswer(
+    comparisonId: string,
+    cat: EnumCat | null,
+    kindAsked: { kind: string; label: string } | null,
+  ): Promise<string> {
+    const base = { comparisonId, ...catFilter(cat) };
+    const verb = cat ?? "changed";
+    const catTotal = await this.prisma.deltaEntry.count({ where: base });
+
+    if (kindAsked) {
+      const n = await this.prisma.deltaEntry.count({ where: { ...base, itemKind: kindAsked.kind } });
+      const plural = n === 1 ? "" : "s";
+      return `**${n}** ${kindAsked.label}${plural} ${cat ? `were ${cat}` : "changed"}${
+        catTotal ? ` — out of ${catTotal} ${verb} item${catTotal === 1 ? "" : "s"} in total.` : "."
+      }`;
+    }
+
+    const grouped = await this.prisma.deltaEntry.groupBy({
+      by: ["itemKind"],
+      where: base,
+      _count: { _all: true },
+    });
+    const breakdown = grouped
+      .map((g) => ({ kind: g.itemKind, n: g._count._all }))
+      .sort((a, b) => b.n - a.n)
+      .map((g) => `- ${KIND_LABELS[g.kind] ?? g.kind}: **${g.n}**`)
+      .join("\n");
+    return catTotal === 0
+      ? `No ${verb} items in this comparison.`
+      : `**${catTotal}** item${catTotal === 1 ? "" : "s"} ${cat ? cat : "changed"}:\n\n${breakdown}`;
+  }
+
   /** Deterministic, paginated enumeration straight from delta_entries. */
   private async enumerate(
     comparisonId: string,
@@ -261,32 +340,53 @@ export class ChatService {
     const pagination = PAGINATION_Q.test(question);
     let cat = enumCategory(question);
     if (pagination && !cat && session.enumType) cat = session.enumType as EnumCat;
-    const where = { comparisonId, ...catFilter(cat) };
+    const kindAsked = itemKindOf(question);
+    const kindFilter = kindAsked ? { itemKind: kindAsked.kind } : {};
+
+    // "how many …" wants a number (optionally broken down), not a list.
+    if (COUNT_Q.test(question) && !pagination) {
+      const answer = await this.countAnswer(comparisonId, cat, kindAsked);
+      await run.emit("retrieval_completed", { vector_hits: 0, fts_hits: 0, fused_k: 0 });
+      await this.persistTurn(session.id, question, answer, [], "grounded");
+      await run.finish("ok", { comparisonId });
+      return { answer, citations: [] as Citation[], confidence: "grounded", sessionId: session.id, runId: run.runId };
+    }
+
+    const where = { comparisonId, ...catFilter(cat), ...kindFilter };
     const offset = pagination && session.enumType === (cat ?? null) ? session.enumOffset : 0;
 
-    const total = await this.prisma.deltaEntry.count({ where });
-    const rows = await this.prisma.deltaEntry.findMany({
+    // Rank by how much a reader cares: identifiers and notes first, generic text
+    // fragments last — so page 1 isn't full of "[]" and single characters.
+    const all = await this.prisma.deltaEntry.findMany({
       where,
-      orderBy: { id: "asc" },
-      skip: offset,
-      take: ENUM_PAGE,
+      select: { id: true, itemKind: true, changeType: true, textA: true, textB: true, description: true },
     });
+    all.sort((a, b) => KIND_RANK(a.itemKind) - KIND_RANK(b.itemKind) || a.id.localeCompare(b.id));
+    const total = all.length;
+    const rows = all.slice(offset, offset + ENUM_PAGE);
     await run.emit("retrieval_completed", { vector_hits: 0, fts_hits: 0, fused_k: rows.length });
 
     const label = cat ?? "change";
+    const noun = kindAsked ? `${label} ${kindAsked.label}` : `${label} item`;
     let answer: string;
     let confidence: string;
     if (rows.length === 0) {
-      answer = offset > 0 ? `That's all — you've seen all ${total} ${label} items.` : `No ${label} items found.`;
+      answer = offset > 0 ? `That's all — you've seen all ${total} ${noun}s.` : `No ${noun}s found.`;
       confidence = total > 0 ? "grounded" : "not_found";
     } else {
       const items = rows.map((e, i) => {
-        const name = e.textB || e.textA || e.description;
-        return `${offset + i + 1}. ${name}${e.itemKind === "geometry" ? " _(geometry)_" : ""}`;
+        const changed = e.changeType === "modified" && e.textA && e.textB && e.textA !== e.textB;
+        const name = changed
+          ? `${e.textA} → ${e.textB}`
+          : e.itemKind === "geometry"
+            ? e.description
+            : e.textB || e.textA || e.description;
+        const kindTag = kindAsked ? "" : ` _(${e.itemKind.replace("_", " ")})_`;
+        return `${offset + i + 1}. ${name}${kindTag}`;
       });
       const end = offset + rows.length;
-      const cap = label.charAt(0).toUpperCase() + label.slice(1);
-      answer = `**${cap} items ${offset + 1}–${end} of ${total}:**\n\n${items.join("\n")}`;
+      const cap = noun.charAt(0).toUpperCase() + noun.slice(1);
+      answer = `**${cap}s ${offset + 1}–${end} of ${total}:**\n\n${items.join("\n")}`;
       answer += end < total ? `\n\n_Ask "show more" for the next ${Math.min(ENUM_PAGE, total - end)}._` : `\n\n_That's all ${total}._`;
       confidence = "grounded";
       await this.prisma.chatSession.update({

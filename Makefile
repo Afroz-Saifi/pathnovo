@@ -15,8 +15,14 @@ delta:
 synth:
 	pnpm tsx scripts/synthesize-pairs.ts
 
-run:   ; @echo "run: lands with slice 2 (API + docker)."
-chat:  ; @echo "chat: lands with slice 4."
-eval:  ; @echo "eval: lands with slice 5."
+# Delta P/R/F1 always; chat metrics too when the API is running.
+eval:
+	pnpm --filter @pathnovo/eval eval
+
+# Compare two eval result files for regressions.
+#   make eval-compare A=eval/results/<a>.json B=eval/results/<b>.json
+eval-compare:
+	pnpm --filter @pathnovo/eval eval:compare -- "$(A)" "$(B)"
+
 markup:; @echo "markup: lands with slice 3 (bonus)."
 demo:  ; @echo "demo: lands with slice 3."

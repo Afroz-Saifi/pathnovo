@@ -22,7 +22,11 @@ Built vertically, one runnable slice at a time.
       retrieval (cosine + keyword + RRF, delta-boosted on change questions); AI SDK answers with a zod
       citation schema, post-validated; refuses unsupported questions; `/chat/:id` UI with citation
       chips + confidence badge; fully traced with token/cost usage.
-- [ ] Slice 5 — Scanned-PDF (OCR) adapter + eval harness + scorecard
+- [x] **Slice 5a — Eval harness** (`make eval`): delta precision/recall/F1 against exact ground truth
+      (in-process), plus chat groundedness / correctness / refusal against the running API; prints a
+      scorecard, writes timestamped results, and diffs two runs (`make eval-compare`) for regressions.
+- [ ] Slice 5b — Scanned-PDF (OCR) adapter (tesseract.js) — the 3rd format (bonus)
+- [ ] `docker compose up` full one-command (API container + seed)
 
 ## Architecture (one idea)
 
@@ -74,6 +78,12 @@ And the web UI (slice 3):
 
 ```bash
 pnpm --filter @pathnovo/web dev   # http://localhost:5173 — pairs · compare · traces
+```
+
+Run the eval scorecard (slice 5 — chat metrics need the API running):
+
+```bash
+make eval          # delta P/R/F1 + chat groundedness/correctness/refusal → scorecard
 ```
 
 ## Layout

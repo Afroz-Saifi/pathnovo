@@ -1,0 +1,30 @@
+[
+  {
+    "question": "What changed between the two revisions?",
+    "answerable": true,
+    "expectContains": ["26-PV-9099", "NOTE 45"]
+  },
+  {
+    "question": "Is tag 26-PV-9099 present, and in which revision?",
+    "answerable": true,
+    "expectContains": ["PID B"]
+  },
+  {
+    "question": "Was NOTE 20 removed?",
+    "answerable": true,
+    "expectContains": ["NOTE 20"]
+  },
+  {
+    "question": "What line spec replaced 4\"-PV-26-9020-FC11S-38?",
+    "answerable": true,
+    "expectContains": ["6\"-PV-26-9020-FC11S-38"]
+  },
+  {
+    "question": "What is the NPSH rating of the pump?",
+    "answerable": false
+  },
+  {
+    "question": "What is the design pressure of vessel V-100?",
+    "answerable": false
+  }
+]

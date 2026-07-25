@@ -1,0 +1,19 @@
+{
+  "name": "@pathnovo/eval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "eval": "tsx src/run-eval.ts",
+    "eval:compare": "tsx src/compare.ts"
+  },
+  "dependencies": {
+    "@pathnovo/config": "workspace:*",
+    "@pathnovo/core": "workspace:*",
+    "@pathnovo/pipeline": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -27,3 +27,6 @@ coverage/
 
 # Generated delta reports
 out/
+
+# Eval run outputs (timestamped; keep the dir out of git)
+eval/results/

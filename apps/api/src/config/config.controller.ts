@@ -63,6 +63,7 @@ const SPECS: Array<{ group: string; items: Array<[keyof Config | "apiKey", strin
       ["wKind", "W_KIND", "Kind-mismatch weight"],
       ["anchorMinPairs", "ANCHOR_MIN_PAIRS", "Min anchors for registration"],
       ["enrich", "ENRICH", "LLM description enrichment"],
+      ["geomEnabled", "GEOM_ENABLED", "Image-based geometry diff (non-text changes)"],
     ],
   },
   {

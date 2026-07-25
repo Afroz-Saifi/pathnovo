@@ -87,6 +87,43 @@ export async function renderPdfToImages(bytes: Buffer, dpi: number): Promise<Ren
   return out;
 }
 
+export interface RenderedPixels {
+  /** Per-pixel darkness 0..1 (1 = full ink), row-major, width*height. */
+  darkness: Float32Array;
+  width: number;
+  height: number;
+}
+
+/** Rasterize pages to a per-pixel darkness map (for geometry diffing). */
+export async function renderPdfToPixels(bytes: Buffer, dpi: number): Promise<RenderedPixels[]> {
+  const doc = await getDocument({ data: new Uint8Array(bytes), isEvalSupported: false }).promise;
+  const out: RenderedPixels[] = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const viewport = page.getViewport({ scale: dpi / 72 });
+    const w = Math.ceil(viewport.width);
+    const h = Math.ceil(viewport.height);
+    const canvas = createCanvas(w, h);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, w, h);
+    await page.render({ canvasContext: ctx as never, viewport }).promise;
+    const rgba = ctx.getImageData(0, 0, w, h).data;
+    const darkness = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const r = rgba[i * 4]!;
+      const g = rgba[i * 4 + 1]!;
+      const b = rgba[i * 4 + 2]!;
+      // Perceived luminance → darkness.
+      darkness[i] = 1 - (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    }
+    out.push({ darkness, width: w, height: h });
+    page.cleanup();
+  }
+  await doc.destroy();
+  return out;
+}
+
 /** Cheap text-layer probe: mean extractable chars per page. Low ⇒ scanned. */
 export async function meanCharsPerPage(bytes: Buffer): Promise<number> {
   const pages = await loadPdfPages(bytes);

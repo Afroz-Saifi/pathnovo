@@ -29,6 +29,7 @@ export const ITEM_KINDS = [
   "dimension",
   "table_cell",
   "symbol",
+  "geometry",
 ] as const;
 export const ItemKindSchema = z.enum(ITEM_KINDS);
 export type ItemKind = (typeof ITEM_KINDS)[number];

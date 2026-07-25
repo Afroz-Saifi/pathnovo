@@ -48,6 +48,7 @@ const ConfigSchema = z.object({
   wKind: z.coerce.number().default(0.15),
   anchorMinPairs: z.coerce.number().int().default(4),
   enrich: onOff(true),
+  geomEnabled: onOff(true),
 
   // ── Retrieval ──
   chunkTargetChars: z.coerce.number().int().default(300),
@@ -89,6 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     wKind: env.W_KIND,
     anchorMinPairs: env.ANCHOR_MIN_PAIRS,
     enrich: env.ENRICH,
+    geomEnabled: env.GEOM_ENABLED,
     chunkTargetChars: env.CHUNK_TARGET_CHARS,
     vectorTop: env.VECTOR_TOP,
     ftsTop: env.FTS_TOP,

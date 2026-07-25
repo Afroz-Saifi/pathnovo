@@ -25,6 +25,7 @@ const KIND_LABEL: Record<ItemKind, string> = {
   dimension: "dimension",
   table_cell: "cell",
   symbol: "symbol",
+  geometry: "geometry",
 };
 
 /**
@@ -173,6 +174,10 @@ function removedEntry(a: ContentItem, sheet: number): DeltaEntry {
     description: `Removed ${KIND_LABEL[a.kind]} "${a.text}" on sheet ${sheet + 1}`,
     confidence: addedRemovedConfidence(a),
   };
+}
+
+export function summarizeEntries(entries: DeltaEntry[], config: Config): DeltaSummary {
+  return summarize(entries, config);
 }
 
 function summarize(entries: DeltaEntry[], config: Config): DeltaSummary {

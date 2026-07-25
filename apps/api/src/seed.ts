@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { loadConfig } from "@pathnovo/config";
-import { computeDelta, ingestDocument } from "@pathnovo/pipeline";
+import { computeDelta, computeGeometryDelta, ingestDocument, summarizeEntries } from "@pathnovo/pipeline";
 import { Prisma, PrismaClient } from "@prisma/client";
 
 import { buildChunks } from "./chat/chunking.js";
@@ -23,6 +23,13 @@ async function main(): Promise<void> {
   const docA = await ingestDocument("revA", bytesA);
   const docB = await ingestDocument("revB", bytesB);
   const c = computeDelta(docA, docB, config);
+  if (config.geomEnabled) {
+    const geom = await computeGeometryDelta(bytesA, bytesB, c);
+    if (geom.length > 0) {
+      c.entries = [...c.entries, ...geom];
+      c.summary = summarizeEntries(c.entries, config);
+    }
+  }
 
   await prisma.comparison.deleteMany({ where: { id: c.id } });
   await prisma.comparison.create({

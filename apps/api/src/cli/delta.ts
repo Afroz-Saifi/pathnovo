@@ -2,7 +2,15 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 
 import { loadConfig } from "@pathnovo/config";
-import { computeDelta, ingestDocument, toJSON, toMarkdown, UnsupportedFormatError } from "@pathnovo/pipeline";
+import {
+  computeDelta,
+  computeGeometryDelta,
+  ingestDocument,
+  summarizeEntries,
+  toJSON,
+  toMarkdown,
+  UnsupportedFormatError,
+} from "@pathnovo/pipeline";
 
 /**
  * Slice-1 CLI: ingest two documents, compute the delta, write the report.
@@ -21,9 +29,19 @@ async function main(): Promise<void> {
   // directory the command was actually invoked from.
   const base = process.env.INIT_CWD ?? process.cwd();
 
-  const docA = await ingestDocument(pid(aPath), readFileSync(resolve(base, aPath)));
-  const docB = await ingestDocument(pid(bPath), readFileSync(resolve(base, bPath)));
+  const bytesA = readFileSync(resolve(base, aPath));
+  const bytesB = readFileSync(resolve(base, bPath));
+  const docA = await ingestDocument(pid(aPath), bytesA);
+  const docB = await ingestDocument(pid(bPath), bytesB);
   const comparison = computeDelta(docA, docB, config);
+
+  if (config.geomEnabled) {
+    const geom = await computeGeometryDelta(bytesA, bytesB, comparison);
+    if (geom.length > 0) {
+      comparison.entries = [...comparison.entries, ...geom];
+      comparison.summary = summarizeEntries(comparison.entries, config);
+    }
+  }
 
   const outDir = resolve(base, "out", comparison.id);
   mkdirSync(outDir, { recursive: true });

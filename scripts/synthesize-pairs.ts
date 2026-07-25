@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { createCanvas } from "@napi-rs/canvas";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 /**
  * Synthesize a sample revision pair from a controlled manifest and emit its
@@ -46,6 +46,27 @@ const revA: Item[] = [
   { id: "d2", text: '3"X6"', kind: "dimension", x: 880, y: 330 },
 ];
 
+// ── Non-text shapes (symbols/valves) to exercise the geometry diff ─────────
+interface Shape {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+const shapesA: Shape[] = [
+  { id: "s1", x: 300, y: 560, w: 44, h: 26 },
+  { id: "s2", x: 500, y: 560, w: 44, h: 26 },
+  { id: "s3", x: 700, y: 560, w: 44, h: 26 },
+];
+function makeShapesB(a: Shape[]): Shape[] {
+  const b = a
+    .filter((s) => s.id !== "s2") // remove one symbol
+    .map((s) => (s.id === "s1" ? { ...s, x: s.x + 160 } : s)); // move one symbol
+  b.push({ id: "s4", x: 880, y: 560, w: 44, h: 26 }); // add one symbol
+  return b;
+}
+
 // ── Revision B: apply controlled edits ────────────────────────────────────
 function makeRevB(a: Item[]): Item[] {
   const remove = new Set(["n3", "l3"]); // remove NOTE 20 and the 2" line
@@ -61,13 +82,23 @@ function makeRevB(a: Item[]): Item[] {
   return b;
 }
 
-async function drawPid(items: Item[]): Promise<Uint8Array> {
+async function drawPid(items: Item[], shapes: Shape[] = []): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   const page = pdf.addPage([PAGE.w, PAGE.h]);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   for (const it of items) {
     const size = SIZE[it.kind];
     page.drawText(it.text, { x: it.x, y: PAGE.h - it.y - size, size, font });
+  }
+  for (const s of shapes) {
+    page.drawRectangle({
+      x: s.x,
+      y: PAGE.h - s.y - s.h,
+      width: s.w,
+      height: s.h,
+      borderColor: rgb(0, 0, 0),
+      borderWidth: 2,
+    });
   }
   return pdf.save();
 }
@@ -122,11 +153,12 @@ function groundTruth(a: Item[], b: Item[]) {
 
 async function main() {
   const revB = makeRevB(revA);
+  const shapesB = makeShapesB(shapesA);
   const dir = resolve("data/samples/pair-1");
   mkdirSync(dir, { recursive: true });
 
-  writeFileSync(resolve(dir, "revA.pdf"), await drawPid(revA));
-  writeFileSync(resolve(dir, "revB.pdf"), await drawPid(revB));
+  writeFileSync(resolve(dir, "revA.pdf"), await drawPid(revA, shapesA));
+  writeFileSync(resolve(dir, "revB.pdf"), await drawPid(revB, shapesB));
 
   const expected = groundTruth(revA, revB);
   writeFileSync(resolve(dir, "expected-delta.json"), JSON.stringify(expected, null, 2));

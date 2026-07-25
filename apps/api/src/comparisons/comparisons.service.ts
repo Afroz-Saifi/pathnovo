@@ -4,7 +4,14 @@ import { basename, extname } from "node:path";
 import { Injectable } from "@nestjs/common";
 import type { Config } from "@pathnovo/config";
 import type { CanonicalDocument, Comparison, DeltaEntry } from "@pathnovo/core";
-import { computeDelta, detectFormat, renderPdfToImages, toMarkdown } from "@pathnovo/pipeline";
+import {
+  computeDelta,
+  computeGeometryDelta,
+  detectFormat,
+  renderPdfToImages,
+  summarizeEntries,
+  toMarkdown,
+} from "@pathnovo/pipeline";
 import { Prisma } from "@prisma/client";
 
 import { IndexingService } from "../chat/indexing.service.js";
@@ -50,6 +57,20 @@ export class ComparisonsService {
           registration_scale: c.registration[0]?.scale ?? 1,
         }),
       );
+
+      // Geometry diff — non-text drawing changes (moved valves, re-routed
+      // pipes, added symbols) that text diffing can't see.
+      if (this.config.geomEnabled) {
+        const geom = await run.span(
+          "geometry_diff",
+          () => computeGeometryDelta(a.buffer, b.buffer, comparison),
+          (g) => ({ geometry_changes: g.length }),
+        );
+        if (geom.length > 0) {
+          comparison.entries = [...comparison.entries, ...geom];
+          comparison.summary = summarizeEntries(comparison.entries, this.config);
+        }
+      }
 
       await this.persistComparison(comparison, a.buffer, b.buffer);
       await run.emit("comparison_persisted", {

@@ -3,7 +3,6 @@ import { ArrowRight, FileText, Maximize2, MessageSquare, X } from "lucide-react"
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import {
@@ -15,13 +14,23 @@ import {
 } from "../lib/api";
 import { cn } from "../lib/utils";
 
-type ChangeType = DeltaEntry["changeType"];
+type Category = "added" | "removed" | "modified" | "moved";
 
-const TYPE = {
-  added: { label: "added", color: "hsl(var(--success))", badge: "success" as const, symbol: "+" },
-  removed: { label: "removed", color: "hsl(var(--destructive))", badge: "destructive" as const, symbol: "−" },
-  modified: { label: "modified", color: "hsl(var(--warning))", badge: "warning" as const, symbol: "~" },
+const CAT: Record<Category, { label: string; color: string; symbol: string }> = {
+  added: { label: "added", color: "hsl(var(--success))", symbol: "+" },
+  removed: { label: "removed", color: "hsl(var(--destructive))", symbol: "−" },
+  modified: { label: "modified", color: "hsl(var(--warning))", symbol: "~" },
+  moved: { label: "moved", color: "hsl(262 65% 58%)", symbol: "⇄" },
 };
+const CATS: Category[] = ["added", "removed", "modified", "moved"];
+
+/** A "moved" change is really modified/moved — split it into its own bucket. */
+function categoryOf(e: DeltaEntry): Category {
+  if (e.changeType === "added") return "added";
+  if (e.changeType === "removed") return "removed";
+  if (e.modifyKind === "moved") return "moved";
+  return "modified";
+}
 
 interface HoverInfo {
   entry: DeltaEntry;
@@ -42,14 +51,17 @@ function Overlay({
   id: string;
   side: "a" | "b";
   entries: DeltaEntry[];
-  filters: Set<ChangeType>;
+  filters: Set<Category>;
   minConf: number;
   selected: string | null;
   onSelect: (id: string | null) => void;
   onHover: (h: HoverInfo | null) => void;
 }) {
+  // When an entry is selected, focus on it — show only that box, hide the rest.
   const boxes = entries
-    .filter((e) => filters.has(e.changeType) && e.confidence >= minConf)
+    .filter((e) =>
+      selected ? e.id === selected : filters.has(categoryOf(e)) && e.confidence >= minConf,
+    )
     .map((e) => ({ e, bbox: side === "a" ? e.bboxA : e.bboxB }))
     .filter((x): x is { e: DeltaEntry; bbox: NonNullable<DeltaEntry["bboxA"]> } => Boolean(x.bbox));
 
@@ -70,9 +82,9 @@ function Overlay({
               y={bbox.y}
               width={bbox.w}
               height={bbox.h}
-              fill={TYPE[e.changeType].color}
+              fill={CAT[categoryOf(e)].color}
               fillOpacity={isSel ? 0.45 : 0.18}
-              stroke={TYPE[e.changeType].color}
+              stroke={CAT[categoryOf(e)].color}
               strokeWidth={isSel ? 2.5 : 1.2}
               vectorEffect="non-scaling-stroke"
               className="pointer-events-auto cursor-pointer"
@@ -91,7 +103,7 @@ export function ComparePage() {
   const { id = "" } = useParams();
   const [selected, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
-  const [filters, setFilters] = useState<Set<ChangeType>>(new Set(["added", "removed", "modified"]));
+  const [filters, setFilters] = useState<Set<Category>>(new Set(CATS));
   const [minConf, setMinConf] = useState(0);
   const [fullscreen, setFullscreen] = useState<"a" | "b" | null>(null);
 
@@ -103,13 +115,16 @@ export function ComparePage() {
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (error || !data) return <p className="text-sm text-destructive">Comparison not found.</p>;
 
-  const s = data.summary;
-  const toggle = (t: ChangeType) =>
+  const toggle = (t: Category) =>
     setFilters((prev) => {
       const next = new Set(prev);
       next.has(t) ? next.delete(t) : next.add(t);
       return next;
     });
+
+  const counts: Record<Category, number> = { added: 0, removed: 0, modified: 0, moved: 0 };
+  for (const e of data.entries) counts[categoryOf(e)]++;
+  const selectedEntry = selected ? data.entries.find((e) => e.id === selected) : undefined;
 
   const overlayProps = {
     id,
@@ -128,9 +143,16 @@ export function ComparePage() {
         <h1 className="text-lg font-semibold">
           {data.pidA} <ArrowRight className="inline h-4 w-4 text-muted-foreground" /> {data.pidB}
         </h1>
-        <Badge variant="success">+{s.added} added</Badge>
-        <Badge variant="destructive">−{s.removed} removed</Badge>
-        <Badge variant="warning">~{s.modified} modified</Badge>
+        {CATS.map((c) => (
+          <span
+            key={c}
+            className="rounded-full px-2 py-0.5 text-xs font-semibold"
+            style={{ color: CAT[c].color, backgroundColor: `color-mix(in srgb, ${CAT[c].color} 14%, transparent)` }}
+          >
+            {CAT[c].symbol}
+            {counts[c]} {c}
+          </span>
+        ))}
         <div className="ml-auto flex gap-2">
           <a href={reportMarkdownUrl(id)} target="_blank" rel="noreferrer">
             <Button variant="outline" size="sm">
@@ -147,11 +169,11 @@ export function ComparePage() {
 
       {/* filters */}
       <div className="flex flex-wrap items-center gap-4 text-sm">
-        {(["added", "removed", "modified"] as ChangeType[]).map((t) => (
+        {CATS.map((t) => (
           <label key={t} className="flex cursor-pointer items-center gap-1.5">
-            <input type="checkbox" checked={filters.has(t)} onChange={() => toggle(t)} />
-            <span style={{ color: TYPE[t].color }}>■</span>
-            {TYPE[t].label}
+            <input type="checkbox" checked={filters.has(t)} onChange={() => toggle(t)} disabled={Boolean(selected)} />
+            <span style={{ color: CAT[t].color }}>■</span>
+            {CAT[t].label}
           </label>
         ))}
         <label
@@ -168,6 +190,14 @@ export function ComparePage() {
             onChange={(e) => setMinConf(Number(e.target.value))}
           />
         </label>
+        {selectedEntry ? (
+          <button
+            onClick={() => setSelected(null)}
+            className="ml-auto flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+          >
+            Focusing 1 change · clear <X className="h-3 w-3" />
+          </button>
+        ) : null}
       </div>
 
       {/* body */}
@@ -195,36 +225,36 @@ export function ComparePage() {
           <div className="flex flex-col gap-2 border-b p-3">
             <span className="font-semibold">Delta report</span>
             <div className="flex flex-wrap gap-1.5">
-              {(["added", "removed", "modified"] as ChangeType[]).map((t) => {
+              {CATS.map((t) => {
                 const active = filters.has(t);
-                const count = t === "added" ? s.added : t === "removed" ? s.removed : s.modified;
                 return (
                   <button
                     key={t}
                     onClick={() => toggle(t)}
+                    disabled={Boolean(selected)}
                     title={`${active ? "Hide" : "Show"} ${t}`}
                     className={cn(
                       "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-opacity",
                       !active && "opacity-40",
                     )}
                     style={{
-                      color: TYPE[t].color,
-                      borderColor: TYPE[t].color,
-                      backgroundColor: active ? `color-mix(in srgb, ${TYPE[t].color} 12%, transparent)` : "transparent",
+                      color: CAT[t].color,
+                      borderColor: CAT[t].color,
+                      backgroundColor: active ? `color-mix(in srgb, ${CAT[t].color} 12%, transparent)` : "transparent",
                     }}
                   >
-                    <span className="font-mono">{TYPE[t].symbol}</span>
-                    {t} · {count}
+                    <span className="font-mono">{CAT[t].symbol}</span>
+                    {t} · {counts[t]}
                   </button>
                 );
               })}
             </div>
           </div>
           <CardContent className="min-h-0 flex-1 overflow-y-auto p-2">
-            {(["added", "removed", "modified"] as ChangeType[]).map((type) => {
+            {CATS.map((type) => {
               if (!filters.has(type)) return null;
               const rows = data.entries
-                .filter((e) => e.changeType === type && e.confidence >= minConf)
+                .filter((e) => categoryOf(e) === type && e.confidence >= minConf)
                 .sort((a, b) => b.confidence - a.confidence);
               if (rows.length === 0) return null;
               return (
@@ -238,11 +268,11 @@ export function ComparePage() {
                       onClick={() => setSelected(selected === e.id ? null : e.id)}
                       className={cn(
                         "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent",
-                        selected === e.id && "bg-accent",
+                        selected === e.id && "bg-accent ring-1 ring-primary",
                       )}
                     >
-                      <span className="font-mono" style={{ color: TYPE[e.changeType].color }}>
-                        {TYPE[e.changeType].symbol}
+                      <span className="font-mono" style={{ color: CAT[categoryOf(e)].color }}>
+                        {CAT[categoryOf(e)].symbol}
                       </span>
                       <span className="flex-1">
                         {e.description}
@@ -264,10 +294,15 @@ export function ComparePage() {
           className="pointer-events-none fixed z-50 max-w-xs rounded-md border bg-card p-2 text-xs shadow-md"
           style={{ left: hover.x + 12, top: hover.y + 12 }}
         >
-          <Badge variant={TYPE[hover.entry.changeType].badge}>
-            {hover.entry.changeType}
-            {hover.entry.modifyKind ? ` · ${hover.entry.modifyKind}` : ""}
-          </Badge>
+          <span
+            className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+            style={{
+              color: CAT[categoryOf(hover.entry)].color,
+              backgroundColor: `color-mix(in srgb, ${CAT[categoryOf(hover.entry)].color} 14%, transparent)`,
+            }}
+          >
+            {CAT[categoryOf(hover.entry)].label}
+          </span>
           <p className="mt-1">{hover.entry.description}</p>
           <p className="mt-1 font-mono text-muted-foreground">
             {hover.entry.itemKind} · conf {hover.entry.confidence.toFixed(2)}

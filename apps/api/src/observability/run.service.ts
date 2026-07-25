@@ -8,7 +8,9 @@ import {
   type TraceEventType,
 } from "./trace-events.js";
 
-export type RunKind = "ingest" | "delta" | "chat" | "eval";
+/** Kinds a run can have. Ingestion is a set of stages inside a delta run, not
+ *  its own kind; eval reports its scorecard to the terminal + eval/results. */
+export type RunKind = "delta" | "chat";
 
 export interface UsageRecord {
   traceEventId?: string;

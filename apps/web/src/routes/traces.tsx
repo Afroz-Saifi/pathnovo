@@ -7,7 +7,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { getMetrics, getRun, getRuns, type RunDetail, type RunSummary, type TraceEvent } from "../lib/api";
 import { cn } from "../lib/utils";
 
-const KIND_ORDER = ["delta", "chat", "eval", "ingest"];
+const KIND_ORDER = ["delta", "chat"];
 
 function statusVariant(status: string): "success" | "destructive" | "warning" {
   return status === "ok" ? "success" : status === "failed" ? "destructive" : "warning";

@@ -86,22 +86,6 @@ async function main(): Promise<void> {
   console.log(`${line}\n`);
 
   // ── Persist for regression comparison ──
-  // Report the scorecard to the API so it lands in the trace store as an
-  // "eval" run — same observability surface as delta/chat runs.
-  if (await apiUp()) {
-    try {
-      const res = await fetch(`${API_URL}/eval/runs`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ delta: deltaNative, deltaScanned, chat }),
-      });
-      const { runId } = (await res.json()) as { runId: string };
-      console.log(`traced as eval run ${runId}`);
-    } catch {
-      console.log("(could not record eval run — API unreachable)");
-    }
-  }
-
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outDir = resolve(evalRoot, "results");
   mkdirSync(outDir, { recursive: true });

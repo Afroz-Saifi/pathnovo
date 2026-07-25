@@ -20,6 +20,7 @@ export interface GroupMatchResult {
 }
 
 const SPATIAL_NORM = 0.5; // normalized distance that saturates the spatial term
+const MAX_MATCH_DIST = 0.2; // hard gate: items farther apart than this can't be the same item
 const HUNGARIAN_MAX = 150; // above this, fall back to greedy (keeps it fast)
 const BIG = 10;
 
@@ -30,11 +31,15 @@ function textSim(a: string, b: string): number {
   return 1 - distance(a, b) / max;
 }
 
-/** Pair cost within a kind group. Lower is a better match. */
+/** Pair cost within a kind group. Lower is a better match; BIG means ineligible. */
 export function pairCost(a: ContentItem, b: ContentItem, t: Transform, c: Config): number {
   const ca = t(bboxCenter(a.bbox));
   const cb = bboxCenter(b.bbox);
-  const spatial = Math.min(1, Math.hypot(ca.x - cb.x, ca.y - cb.y) / SPATIAL_NORM);
+  const dist = Math.hypot(ca.x - cb.x, ca.y - cb.y);
+  // Hard spatial gate: two items far apart on the sheet are not the same item,
+  // so they must surface as a genuine add + remove, never a forced modify.
+  if (dist > MAX_MATCH_DIST) return BIG;
+  const spatial = Math.min(1, dist / SPATIAL_NORM);
   return c.wText * (1 - textSim(a.text, b.text)) + c.wSpatial * spatial;
 }
 

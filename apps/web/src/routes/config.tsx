@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { type ConfigItem, getConfig, resetConfig, updateConfig } from "../lib/api";
 
 function Field({
@@ -23,35 +24,38 @@ function Field({
     return <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{String(item.value)}</span>;
   }
 
-  const selectClass =
-    "w-40 rounded border bg-background px-2 py-0.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-  // Boolean → On/Off dropdown.
+  // Boolean → On/Off dropdown (shadcn Select).
   if (item.type === "boolean") {
     return (
-      <select
-        className={selectClass}
-        value={value ? "on" : "off"}
-        onChange={(e) => onChange(e.target.value === "on")}
-      >
-        <option value="on">on</option>
-        <option value="off">off</option>
-      </select>
+      <Select value={value ? "on" : "off"} onValueChange={(v) => onChange(v === "on")}>
+        <SelectTrigger className="w-24">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="on">on</SelectItem>
+          <SelectItem value="off">off</SelectItem>
+        </SelectContent>
+      </Select>
     );
   }
 
-  // Known choices → dropdown (keep the current value selectable).
+  // Known choices → dropdown, keeping the current value selectable (shadcn Select).
   const opts = options ?? item.options;
   if (opts && opts.length > 0) {
     const list = opts.includes(String(value)) ? opts : [String(value), ...opts];
     return (
-      <select className={selectClass} value={String(value)} onChange={(e) => onChange(e.target.value)}>
-        {list.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
+      <Select value={String(value)} onValueChange={(v) => onChange(v)}>
+        <SelectTrigger className="w-44">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {list.map((o) => (
+            <SelectItem key={o} value={o}>
+              {o}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     );
   }
 

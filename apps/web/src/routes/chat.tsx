@@ -6,6 +6,7 @@ import { Link, useParams } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
+import { Markdown } from "../components/ui/markdown";
 import { askChat, type Citation, getChatHistory } from "../lib/api";
 import { cn } from "../lib/utils";
 
@@ -90,7 +91,11 @@ export function ChatPage() {
           <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
             <Card className={cn("max-w-[80%]", m.role === "user" && "bg-accent")}>
               <CardContent className="p-3 text-sm">
-                <p className="whitespace-pre-wrap">{m.content}</p>
+                {m.role === "assistant" ? (
+                  <Markdown>{m.content}</Markdown>
+                ) : (
+                  <p className="whitespace-pre-wrap">{m.content}</p>
+                )}
                 {m.citations && m.citations.length > 0 ? (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {m.citations.map((c, j) => (

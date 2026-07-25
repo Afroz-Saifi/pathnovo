@@ -9,10 +9,12 @@ import {
   Param,
   Post,
   Req,
+  Res,
   UploadedFiles,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
+import type { Response } from "express";
 
 import { ComparisonsService, type UploadedDoc } from "./comparisons.service.js";
 
@@ -39,11 +41,30 @@ export class ComparisonsController {
     return this.comparisons.createFromFiles(a, b, req.id ?? randomUUID());
   }
 
+  @Get()
+  async list() {
+    return this.comparisons.listComparisons();
+  }
+
   @Get(":id")
   async get(@Param("id") id: string) {
     const c = await this.comparisons.getComparison(id);
     if (!c) throw new NotFoundException(`comparison ${id} not found`);
     return c;
+  }
+
+  @Get(":id/sheet/:side/:index")
+  async sheet(
+    @Param("id") id: string,
+    @Param("side") side: string,
+    @Param("index") index: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const s = side === "a" || side === "b" ? side : null;
+    if (!s) throw new BadRequestException("side must be 'a' or 'b'");
+    const png = await this.comparisons.renderSheet(id, s, Number(index) || 0);
+    if (!png) throw new NotFoundException("sheet not found");
+    res.set("content-type", "image/png").set("cache-control", "public, max-age=86400").send(png);
   }
 
   @Get(":id/report.md")

@@ -48,7 +48,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4">
+    <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-3xl flex-col gap-4">
       <div className="flex items-center gap-2">
         <Link to={`/compare/${id}`} className="text-sm text-primary hover:underline">
           <ArrowLeft className="mr-1 inline h-4 w-4" />
@@ -57,7 +57,7 @@ export function ChatPage() {
         <span className="text-sm text-muted-foreground">· grounded chat over both revisions + the delta</span>
       </div>
 
-      <div className="flex min-h-[50vh] flex-col gap-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
         {messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Ask what changed, or about either revision. Answers are grounded with citations; unsupported

@@ -35,6 +35,25 @@ export interface ComparisonDetail {
   pidB: string;
   summary: DeltaSummary;
   entries: DeltaEntry[];
+  hasSheets: boolean;
+}
+
+export interface ComparisonListItem {
+  id: string;
+  pidA: string;
+  pidB: string;
+  summary: DeltaSummary;
+  createdAt: string;
+  entries: number;
+  hasChat: boolean;
+}
+
+export async function listComparisons(): Promise<ComparisonListItem[]> {
+  return json(await fetch(`${API}/comparisons`));
+}
+
+export function sheetImageUrl(id: string, side: "a" | "b", index = 0): string {
+  return `${API}/comparisons/${id}/sheet/${side}/${index}`;
 }
 
 export interface RunSummary {

@@ -18,8 +18,10 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const dir = resolve(process.cwd(), "../../data/samples/pair-1");
 
-  const docA = await ingestDocument("revA", readFileSync(resolve(dir, "revA.pdf")));
-  const docB = await ingestDocument("revB", readFileSync(resolve(dir, "revB.pdf")));
+  const bytesA = readFileSync(resolve(dir, "revA.pdf"));
+  const bytesB = readFileSync(resolve(dir, "revB.pdf"));
+  const docA = await ingestDocument("revA", bytesA);
+  const docB = await ingestDocument("revB", bytesB);
   const c = computeDelta(docA, docB, config);
 
   await prisma.comparison.deleteMany({ where: { id: c.id } });
@@ -31,6 +33,8 @@ async function main(): Promise<void> {
       registration: c.registration as unknown as Prisma.InputJsonValue,
       configSnapshot: c.configSnapshot as unknown as Prisma.InputJsonValue,
       summary: c.summary as unknown as Prisma.InputJsonValue,
+      pdfA: bytesA,
+      pdfB: bytesB,
     },
   });
   await prisma.deltaEntry.createMany({

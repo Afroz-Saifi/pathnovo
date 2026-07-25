@@ -35,6 +35,9 @@ model Comparison {
   registration   Json
   configSnapshot Json
   summary        Json
+  // Source PDFs, kept so sheets can be rendered for the overlay view.
+  pdfA           Bytes?
+  pdfB           Bytes?
   entries        DeltaEntry[]
   chunks         Chunk[]
   chatSessions   ChatSession[]

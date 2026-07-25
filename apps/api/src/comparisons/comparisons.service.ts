@@ -4,7 +4,7 @@ import { basename, extname } from "node:path";
 import { Injectable } from "@nestjs/common";
 import { type Config, loadConfig } from "@pathnovo/config";
 import type { CanonicalDocument, Comparison, DeltaEntry } from "@pathnovo/core";
-import { computeDelta, detectFormat, toMarkdown } from "@pathnovo/pipeline";
+import { computeDelta, detectFormat, renderPdfToImages, toMarkdown } from "@pathnovo/pipeline";
 import { Prisma } from "@prisma/client";
 
 import { IndexingService } from "../chat/indexing.service.js";
@@ -47,7 +47,7 @@ export class ComparisonsService {
         }),
       );
 
-      await this.persistComparison(comparison);
+      await this.persistComparison(comparison, a.buffer, b.buffer);
       await run.emit("comparison_persisted", {
         comparisonId: comparison.id,
         entries: comparison.entries.length,
@@ -109,7 +109,7 @@ export class ComparisonsService {
     );
   }
 
-  private async persistComparison(c: Comparison): Promise<void> {
+  private async persistComparison(c: Comparison, pdfA?: Buffer, pdfB?: Buffer): Promise<void> {
     // Re-ingesting the same pair yields the same deterministic id; replace it
     // (cascade clears prior entries, chunks, and chat) so runs are idempotent.
     await this.prisma.comparison.deleteMany({ where: { id: c.id } });
@@ -121,6 +121,8 @@ export class ComparisonsService {
         registration: c.registration as unknown as Prisma.InputJsonValue,
         configSnapshot: c.configSnapshot as unknown as Prisma.InputJsonValue,
         summary: c.summary as unknown as Prisma.InputJsonValue,
+        pdfA: pdfA ?? null,
+        pdfB: pdfB ?? null,
       },
     });
     await this.prisma.deltaEntry.createMany({
@@ -141,8 +143,59 @@ export class ComparisonsService {
     });
   }
 
+  private readonly sheetCache = new Map<string, Buffer>();
+
+  /** Render one sheet of a source PDF to a PNG (for the overlay view). Cached. */
+  async renderSheet(id: string, side: "a" | "b", index: number): Promise<Buffer | null> {
+    const key = `${id}:${side}:${index}`;
+    const cached = this.sheetCache.get(key);
+    if (cached) return cached;
+
+    const row = await this.prisma.comparison.findUnique({
+      where: { id },
+      select: { pdfA: true, pdfB: true },
+    });
+    const bytes = side === "a" ? row?.pdfA : row?.pdfB;
+    if (!bytes) return null;
+
+    const pages = await renderPdfToImages(Buffer.from(bytes), 150);
+    const page = pages[index];
+    if (!page) return null;
+    this.sheetCache.set(key, page.png);
+    return page.png;
+  }
+
+  async listComparisons() {
+    const rows = await this.prisma.comparison.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        pidA: true,
+        pidB: true,
+        summary: true,
+        createdAt: true,
+        _count: { select: { entries: true, chunks: true } },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      pidA: r.pidA,
+      pidB: r.pidB,
+      summary: r.summary,
+      createdAt: r.createdAt,
+      entries: r._count.entries,
+      hasChat: r._count.chunks > 0,
+    }));
+  }
+
   async getComparison(id: string) {
-    return this.prisma.comparison.findUnique({ where: { id }, include: { entries: true } });
+    const c = await this.prisma.comparison.findUnique({
+      where: { id },
+      include: { entries: true },
+    });
+    if (!c) return null;
+    // Report whether renderable source sheets exist (drives the overlay view).
+    return { ...c, pdfA: undefined, pdfB: undefined, hasSheets: Boolean(c.pdfA && c.pdfB) };
   }
 
   async getReportMarkdown(id: string): Promise<string | null> {

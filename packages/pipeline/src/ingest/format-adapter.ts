@@ -18,6 +18,9 @@ export interface IngestContext {
   pid: string;
   /** Below this many extractable chars/page a PDF is treated as scanned. */
   scannedTextThreshold: number;
+  /** OCR render resolution for the scanned adapter. */
+  ocrDpi?: number;
+  ocrLang?: string;
 }
 
 /** Raised by adapters that recognize a format but can't (yet) parse it. */

@@ -26,7 +26,9 @@ Built vertically, one runnable slice at a time.
       (in-process), plus chat groundedness / correctness / refusal against the running API; prints a
       scorecard, writes timestamped results, and diffs two runs (`make eval-compare`) for regressions.
 - [x] **`docker compose up` one-command**: Postgres + API container, migrate + seed the demo pair on boot.
-- [ ] Slice 5b — Scanned-PDF (OCR) adapter (tesseract.js) — the 3rd format (bonus)
+- [x] **Slice 5b — Scanned-PDF OCR adapter** (tesseract.js): renders pages, OCRs words with boxes +
+      confidence, merged to the same granularity as the native path. All 3 formats now real. The eval
+      shows the honest native/native (F1 1.00) vs native/scanned (F1 ~0.77) split.
 
 ## Architecture (one idea)
 

@@ -12,11 +12,11 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const evalRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const API_URL = process.env.API_URL ?? "http://localhost:3001";
 
-async function runDelta(): Promise<DeltaScore> {
-  const dir = resolve(repoRoot, "data/samples/pair-1");
+async function runDelta(pairDir: string, aFile: string, bFile: string): Promise<DeltaScore> {
+  const dir = resolve(repoRoot, "data/samples", pairDir);
   const config = loadConfig();
-  const docA = await ingestDocument("revA", readFileSync(resolve(dir, "revA.pdf")));
-  const docB = await ingestDocument("revB", readFileSync(resolve(dir, "revB.pdf")));
+  const docA = await ingestDocument("revA", readFileSync(resolve(dir, aFile)));
+  const docB = await ingestDocument("revB", readFileSync(resolve(dir, bFile)));
   const comparison = computeDelta(docA, docB, config);
   const expected = JSON.parse(readFileSync(resolve(dir, "expected-delta.json"), "utf8")) as ExpectedEntry[];
   return scoreDelta(comparison.entries, expected);
@@ -46,7 +46,8 @@ function pct(pass: number, total: number): string {
 }
 
 async function main(): Promise<void> {
-  const delta = await runDelta();
+  const deltaNative = await runDelta("pair-1", "revA.pdf", "revB.pdf");
+  const deltaScanned = await runDelta("pair-2", "revA.pdf", "revB-scanned.pdf");
 
   let chat: ChatScore | null = null;
   if (await apiUp()) {
@@ -60,11 +61,11 @@ async function main(): Promise<void> {
   console.log(`\n${line}`);
   console.log(" Pathnovo eval scorecard");
   console.log(line);
-  console.log(" Delta (pair-1, native/native)");
-  console.log(
-    `   P ${delta.precision.toFixed(2)}  R ${delta.recall.toFixed(2)}  F1 ${delta.f1.toFixed(2)}` +
-      `   (tp ${delta.tp}, fp ${delta.fp}, fn ${delta.fn})`,
-  );
+  const deltaRow = (label: string, d: DeltaScore) =>
+    `   ${label.padEnd(16)} P ${d.precision.toFixed(2)}  R ${d.recall.toFixed(2)}  F1 ${d.f1.toFixed(2)}   (tp ${d.tp}, fp ${d.fp}, fn ${d.fn})`;
+  console.log(" Delta");
+  console.log(deltaRow("native/native", deltaNative));
+  console.log(deltaRow("native/scanned", deltaScanned));
   if (chat) {
     console.log(" Chat");
     console.log(`   groundedness  ${pct(chat.groundedness.pass, chat.groundedness.total)}`);
@@ -75,8 +76,8 @@ async function main(): Promise<void> {
   }
 
   const failures = [
-    ...delta.missed.map((k) => `delta FN: ${k}`),
-    ...delta.spurious.map((k) => `delta FP: ${k}`),
+    ...deltaScanned.missed.map((k) => `delta FN (scanned): ${k}`),
+    ...deltaScanned.spurious.map((k) => `delta FP (scanned): ${k}`),
     ...(chat?.rows.filter((r) => !r.pass).map((r) => `chat: "${r.question}" (conf ${r.confidence})`) ?? []),
   ];
   console.log(" Failures");
@@ -88,7 +89,7 @@ async function main(): Promise<void> {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outDir = resolve(evalRoot, "results");
   mkdirSync(outDir, { recursive: true });
-  const result = { timestamp: stamp, delta, chat };
+  const result = { timestamp: stamp, delta: deltaNative, deltaScanned, chat };
   writeFileSync(resolve(outDir, `${stamp}.json`), JSON.stringify(result, null, 2));
   console.log(`wrote results/${stamp}.json`);
 }

@@ -4,6 +4,7 @@
  * adapter then normalizes to 0..1. This is the only place we touch pdfjs.
  */
 
+import { createCanvas } from "@napi-rs/canvas";
 // The legacy build is the Node-friendly entry (no browser worker needed).
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 
@@ -61,6 +62,29 @@ export async function loadPdfPages(bytes: Buffer): Promise<RawPage[]> {
   }
   await doc.destroy();
   return pages;
+}
+
+export interface RenderedPage {
+  png: Buffer;
+  width: number;
+  height: number;
+}
+
+/** Rasterize every page to a PNG at the given DPI (input to OCR). */
+export async function renderPdfToImages(bytes: Buffer, dpi: number): Promise<RenderedPage[]> {
+  const doc = await getDocument({ data: new Uint8Array(bytes), isEvalSupported: false }).promise;
+  const out: RenderedPage[] = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const viewport = page.getViewport({ scale: dpi / 72 });
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx as never, viewport }).promise;
+    out.push({ png: canvas.toBuffer("image/png"), width: canvas.width, height: canvas.height });
+    page.cleanup();
+  }
+  await doc.destroy();
+  return out;
 }
 
 /** Cheap text-layer probe: mean extractable chars per page. Low ⇒ scanned. */

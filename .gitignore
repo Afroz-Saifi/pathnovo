@@ -30,3 +30,6 @@ out/
 
 # Eval run outputs (timestamped; keep the dir out of git)
 eval/results/
+
+# Tesseract OCR language data (downloaded on first run)
+*.traineddata

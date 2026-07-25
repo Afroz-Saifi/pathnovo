@@ -17,10 +17,12 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.65",
     "@pathnovo/config": "workspace:*",
     "@pathnovo/core": "workspace:*",
     "fastest-levenshtein": "^1.0.16",
-    "pdfjs-dist": "^4.8.69"
+    "pdfjs-dist": "^4.8.69",
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

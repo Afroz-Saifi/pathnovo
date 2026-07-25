@@ -15,6 +15,7 @@
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^0.1.65",
     "@types/node": "^22.10.2",
     "pdf-lib": "^1.17.1",
     "tsx": "^4.19.2",

@@ -2,8 +2,9 @@ import type { CanonicalDocument, ContentItem } from "@pathnovo/core";
 
 import { classifyKind, tagAttrs } from "./classify.js";
 import { contentItemId, type FormatAdapter, type IngestContext } from "./format-adapter.js";
+import { mergeRuns } from "./merge.js";
 import { normalizeText } from "./normalize.js";
-import { loadPdfPages, meanCharsPerPage, type RawPage, type RawTextRun } from "./pdf.js";
+import { loadPdfPages, meanCharsPerPage, type RawPage } from "./pdf.js";
 
 const ADAPTER_VERSION = "1.0.0";
 
@@ -64,52 +65,4 @@ function buildItems(page: RawPage, sheetIndex: number): ContentItem[] {
     });
   }
   return items;
-}
-
-/**
- * Merge fragmented pdfjs text runs into logical items: cluster runs into lines
- * by vertical position, then within a line join x-adjacent runs so split tokens
- * (e.g. a tag broken into "26" "-KA-" "9023") reassemble before classification.
- */
-function mergeRuns(runs: RawTextRun[]): RawTextRun[] {
-  if (runs.length === 0) return [];
-  const heights = runs.map((r) => r.h).sort((a, b) => a - b);
-  const medianH = heights[Math.floor(heights.length / 2)] ?? 1;
-  const lineTol = medianH * 0.6;
-
-  const sorted = [...runs].sort((a, b) => a.y - b.y || a.x - b.x);
-  const lines: RawTextRun[][] = [];
-  for (const run of sorted) {
-    const line = lines[lines.length - 1];
-    const ref = line?.[0];
-    if (line && ref && Math.abs(run.y - ref.y) <= lineTol) line.push(run);
-    else lines.push([run]);
-  }
-
-  const out: RawTextRun[] = [];
-  for (const line of lines) {
-    line.sort((a, b) => a.x - b.x);
-    let cur: RawTextRun | undefined;
-    for (const run of line) {
-      if (!cur) {
-        cur = { ...run };
-        continue;
-      }
-      const gap = run.x - (cur.x + cur.w);
-      if (gap < medianH * 0.9) {
-        const sep = gap > medianH * 0.15 ? " " : "";
-        const right = Math.max(cur.x + cur.w, run.x + run.w);
-        cur.str += sep + run.str;
-        cur.x = Math.min(cur.x, run.x);
-        cur.w = right - cur.x;
-        cur.h = Math.max(cur.h, run.h);
-        cur.y = Math.min(cur.y, run.y);
-      } else {
-        out.push(cur);
-        cur = { ...run };
-      }
-    }
-    if (cur) out.push(cur);
-  }
-  return out;
 }

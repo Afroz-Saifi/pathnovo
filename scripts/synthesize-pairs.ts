@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { createCanvas } from "@napi-rs/canvas";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 
 /**
@@ -71,6 +72,31 @@ async function drawPid(items: Item[]): Promise<Uint8Array> {
   return pdf.save();
 }
 
+/** Render the manifest onto a raster image (a synthetic "scan"). */
+function drawScanPng(items: Item[]): Buffer {
+  const scale = 2;
+  const canvas = createCanvas(PAGE.w * scale, PAGE.h * scale);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "white";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "black";
+  for (const it of items) {
+    const size = SIZE[it.kind] * scale;
+    ctx.font = `${size}px Helvetica`;
+    ctx.fillText(it.text, it.x * scale, (it.y + SIZE[it.kind]) * scale);
+  }
+  return canvas.toBuffer("image/png");
+}
+
+/** Wrap a raster page in an image-only PDF (no text layer) — detected as scanned. */
+async function makeScannedPdf(items: Item[]): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([PAGE.w, PAGE.h]);
+  const img = await pdf.embedPng(drawScanPng(items));
+  page.drawImage(img, { x: 0, y: 0, width: PAGE.w, height: PAGE.h });
+  return pdf.save();
+}
+
 const MOVE_EPS = 0.008 * PAGE.w;
 
 /** Ground truth from the manifest diff — exact by construction. */
@@ -119,8 +145,27 @@ Injected changes (rev A → rev B):
 Regenerate: \`pnpm tsx scripts/synthesize-pairs.ts\`
 `;
   writeFileSync(resolve(dir, "README.md"), provenance);
-
   console.log(`wrote ${dir}/revA.pdf, revB.pdf, expected-delta.json (${expected.length} entries)`);
+
+  // pair-2 — native rev A vs a rasterized (scanned) rev B, exercising OCR.
+  const dir2 = resolve("data/samples/pair-2");
+  mkdirSync(dir2, { recursive: true });
+  writeFileSync(resolve(dir2, "revA.pdf"), await drawPid(revA));
+  writeFileSync(resolve(dir2, "revB-scanned.pdf"), await makeScannedPdf(revB));
+  writeFileSync(resolve(dir2, "expected-delta.json"), JSON.stringify(expected, null, 2));
+  writeFileSync(
+    resolve(dir2, "README.md"),
+    `# pair-2 — native ↔ scanned
+
+Same manifest and injected changes as pair-1, but rev B is rasterized to an
+image-only PDF (no text layer), so ingesting it exercises the OCR adapter
+(tesseract.js). Ground truth is identical to pair-1; the scanned path shows
+how OCR noise affects delta metrics vs the native/native case.
+
+Regenerate: \`pnpm tsx scripts/synthesize-pairs.ts\`
+`,
+  );
+  console.log(`wrote ${dir2}/revA.pdf, revB-scanned.pdf, expected-delta.json`);
 }
 
 main().catch((e) => {

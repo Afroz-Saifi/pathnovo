@@ -15,7 +15,9 @@ Built vertically, one runnable slice at a time.
 - [x] **Slice 2 — API + persistence + observability**: NestJS + Prisma + Postgres; POST two PDFs →
       traced ingest → delta → persisted comparison; runs / trace_events / usage_events with mandatory
       OTel-style attributes; `/metrics`; failures surfaced as `stage_failed`.
-- [ ] Slice 3 — React (shadcn/ui) web UI: pairs · compare + markup overlay · chat · traces
+- [x] **Slice 3 — Web UI** (React 19 + shadcn/ui + lucide): `/pairs` upload, `/compare/:id` with a
+      located delta overlay (boxes drawn from normalized bboxes) + grouped report, `/traces` with runs
+      list, event waterfall, and metric cards.
 - [ ] Slice 4 — Grounded chat (hybrid retrieval + cited answers)
 - [ ] Slice 5 — Scanned-PDF (OCR) adapter + eval harness + scorecard
 
@@ -63,6 +65,12 @@ cd apps/api && cp ../../.env.example .env && pnpm prisma:migrate:dev && pnpm bui
 curl -F "a=@data/samples/pair-1/revA.pdf" -F "b=@data/samples/pair-1/revB.pdf" \
   http://localhost:3001/comparisons
 # then: GET /comparisons/:id/report.md · GET /runs/:id (trace waterfall) · GET /metrics
+```
+
+And the web UI (slice 3):
+
+```bash
+pnpm --filter @pathnovo/web dev   # http://localhost:5173 — pairs · compare · traces
 ```
 
 ## Layout

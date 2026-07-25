@@ -10,9 +10,11 @@ documents and the delta — with citations, observability, and an evaluation har
 
 Built vertically, one runnable slice at a time.
 
-- [x] **Slice 1 — Core delta on native PDFs** (this milestone): ingest a native PDF → canonical
-      representation → deterministic delta engine → Markdown + JSON report, runnable from a CLI.
-- [ ] Slice 2 — NestJS API + Postgres persistence + observability (runs / trace_events / usage_events)
+- [x] **Slice 1 — Core delta on native PDFs**: ingest a native PDF → canonical representation →
+      deterministic delta engine → Markdown + JSON report, runnable from a CLI.
+- [x] **Slice 2 — API + persistence + observability**: NestJS + Prisma + Postgres; POST two PDFs →
+      traced ingest → delta → persisted comparison; runs / trace_events / usage_events with mandatory
+      OTel-style attributes; `/metrics`; failures surfaced as `stage_failed`.
 - [ ] Slice 3 — React (shadcn/ui) web UI: pairs · compare + markup overlay · chat · traces
 - [ ] Slice 4 — Grounded chat (hybrid retrieval + cited answers)
 - [ ] Slice 5 — Scanned-PDF (OCR) adapter + eval harness + scorecard
@@ -42,11 +44,25 @@ corepack enable
 pnpm install
 ```
 
-Compute a delta between two native PDFs (slice 1):
+Compute a delta between two native PDFs from the CLI (slice 1):
 
 ```bash
 pnpm --filter @pathnovo/api delta -- <pidA.pdf> <pidB.pdf>
 # → writes out/<comparison-id>/delta-report.{md,json}
+```
+
+Or run the traced API (slice 2):
+
+```bash
+docker compose up -d db
+cd apps/api && cp ../../.env.example .env && pnpm prisma:migrate:dev && pnpm build && pnpm start
+```
+
+```bash
+# POST two revisions → traced comparison
+curl -F "a=@data/samples/pair-1/revA.pdf" -F "b=@data/samples/pair-1/revB.pdf" \
+  http://localhost:3001/comparisons
+# then: GET /comparisons/:id/report.md · GET /runs/:id (trace waterfall) · GET /metrics
 ```
 
 ## Layout

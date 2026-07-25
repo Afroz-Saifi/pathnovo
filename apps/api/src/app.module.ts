@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { Module } from "@nestjs/common";
 import { LoggerModule } from "nestjs-pino";
 
+import { ComparisonsModule } from "./comparisons/comparisons.module.js";
 import { HealthController } from "./health/health.controller.js";
+import { ObservabilityModule } from "./observability/observability.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
 
 @Module({
@@ -20,6 +22,8 @@ import { PrismaModule } from "./prisma/prisma.module.js";
       },
     }),
     PrismaModule,
+    ObservabilityModule,
+    ComparisonsModule,
   ],
   controllers: [HealthController],
 })

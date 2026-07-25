@@ -26,6 +26,9 @@ const ConfigSchema = z.object({
   llmMaxRetries: z.coerce.number().int().default(2),
   contextTokenBudget: z.coerce.number().int().default(16000),
   historyMaxTurns: z.coerce.number().int().default(6),
+  /** "llm" = the model writes the answer from the complete delta facts;
+   *  "direct" = return the deterministic list/count verbatim (no LLM). */
+  enumMode: z.enum(["llm", "direct"]).default("llm"),
   runTokenCeiling: z.coerce.number().int().default(60000),
   openaiApiKey: z.string().optional(),
 
@@ -74,6 +77,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     llmMaxRetries: env.LLM_MAX_RETRIES,
     contextTokenBudget: env.CONTEXT_TOKEN_BUDGET,
     historyMaxTurns: env.HISTORY_MAX_TURNS,
+    enumMode: env.ENUM_MODE,
     runTokenCeiling: env.RUN_TOKEN_CEILING,
     openaiApiKey: env.OPENAI_API_KEY,
     databaseUrl: env.DATABASE_URL,

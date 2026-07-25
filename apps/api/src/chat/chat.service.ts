@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Config } from "@pathnovo/config";
-import { generateObject } from "ai";
+import { generateObject, generateText } from "ai";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
@@ -327,14 +327,12 @@ export class ChatService {
       const cat = session.enumType as EnumCat;
       const total = await this.prisma.deltaEntry.count({ where: { comparisonId, ...catFilter(cat) } });
       const shown = Math.min(session.enumOffset, total);
-      const answer =
+      const facts =
         shown >= total
           ? `Yes — that's the complete set: all **${total}** ${cat} items.`
           : `No — you've seen **${shown} of ${total}** ${cat} items. Ask "show more" for the next ${Math.min(ENUM_PAGE, total - shown)}.`;
       await run.emit("retrieval_completed", { vector_hits: 0, fts_hits: 0, fused_k: 0 });
-      await this.persistTurn(session.id, question, answer, [], "grounded");
-      await run.finish("ok", { comparisonId });
-      return { answer, citations: [] as Citation[], confidence: "grounded", sessionId: session.id, runId: run.runId };
+      return this.finishEnum(run, session, comparisonId, question, facts, "grounded");
     }
 
     const pagination = PAGINATION_Q.test(question);
@@ -345,11 +343,9 @@ export class ChatService {
 
     // "how many …" wants a number (optionally broken down), not a list.
     if (COUNT_Q.test(question) && !pagination) {
-      const answer = await this.countAnswer(comparisonId, cat, kindAsked);
+      const facts = await this.countAnswer(comparisonId, cat, kindAsked);
       await run.emit("retrieval_completed", { vector_hits: 0, fts_hits: 0, fused_k: 0 });
-      await this.persistTurn(session.id, question, answer, [], "grounded");
-      await run.finish("ok", { comparisonId });
-      return { answer, citations: [] as Citation[], confidence: "grounded", sessionId: session.id, runId: run.runId };
+      return this.finishEnum(run, session, comparisonId, question, facts, "grounded");
     }
 
     const where = { comparisonId, ...catFilter(cat), ...kindFilter };
@@ -395,9 +391,88 @@ export class ChatService {
       });
     }
 
+    return this.finishEnum(run, session, comparisonId, question, answer, confidence);
+  }
+
+  /**
+   * Finish an enumeration turn. In "llm" mode (default) the deterministic result
+   * is handed to the model as authoritative facts and it writes the reply — so
+   * the user gets a real answer (grouped, summarised, in their own terms) while
+   * completeness still comes from the delta table. "direct" mode returns the
+   * deterministic text verbatim. Falls back to the facts if the model fails.
+   */
+  private async finishEnum(
+    run: Awaited<ReturnType<RunService["start"]>>,
+    session: { id: string },
+    comparisonId: string,
+    question: string,
+    facts: string,
+    confidence: string,
+  ) {
+    let answer = facts;
+    if (this.config.enumMode === "llm") {
+      try {
+        answer = await this.composeFromFacts(question, facts, run);
+      } catch {
+        // keep the deterministic text — never fail a turn over formatting
+      }
+    }
     await this.persistTurn(session.id, question, answer, [], confidence);
     await run.finish("ok", { comparisonId });
     return { answer, citations: [] as Citation[], confidence, sessionId: session.id, runId: run.runId };
+  }
+
+  /** Ask the model to answer the question from the supplied delta facts. */
+  private async composeFromFacts(
+    question: string,
+    facts: string,
+    run: Awaited<ReturnType<RunService["start"]>>,
+  ): Promise<string> {
+    const isReasoning = /^(o1|o3|gpt-5)/i.test(this.config.llmModel);
+    const system =
+      `You answer questions about the delta between two revisions of an engineering document.\n` +
+      `The DELTA FACTS below come from the system's delta database and are complete and authoritative for what was asked.\n` +
+      `Rules:\n` +
+      `- Use only those facts. Never invent, drop, or renumber items.\n` +
+      `- If the user asked for the "main" or "important" changes, or a summary: group by kind, call out patterns ` +
+      `(e.g. a systematic tag renumbering), give the totals, and cite a few concrete examples rather than pasting everything.\n` +
+      `- If the user asked to list or enumerate: present all the listed items, keeping their text exactly.\n` +
+      `- If a "show more" hint or a total is present, preserve that information.\n` +
+      `- Reply in concise markdown. No preamble about being an AI.`;
+    await run.emit("llm_call_started", {
+      "gen_ai.system": this.config.llmProvider,
+      "gen_ai.request.model": this.config.llmModel,
+    });
+    const t0 = Date.now();
+    const { text, usage } = await generateText({
+      model: resolveChatModel(this.config.llmProvider, this.config.llmModel),
+      maxTokens: isReasoning ? 8000 : 4000,
+      system,
+      prompt: `DELTA FACTS:\n${facts}\n\nQuestion: ${question}`,
+      ...(isReasoning ? {} : { temperature: this.config.llmTemperature }),
+    });
+    const inTok = usage?.promptTokens ?? 0;
+    const outTok = usage?.completionTokens ?? 0;
+    await run.emit(
+      "llm_call_completed",
+      {
+        "gen_ai.system": this.config.llmProvider,
+        "gen_ai.request.model": this.config.llmModel,
+        "gen_ai.usage.input_tokens": inTok,
+        "gen_ai.usage.output_tokens": outTok,
+        "gen_ai.prompt": `${system}\n\nDELTA FACTS:\n${facts}\n\nQuestion: ${question}`.slice(0, 8000),
+        "gen_ai.completion": text.slice(0, 4000),
+      },
+      { durationMs: Date.now() - t0 },
+    );
+    await run.recordUsage({
+      provider: this.config.llmProvider,
+      model: this.config.llmModel,
+      inputTokens: inTok,
+      outputTokens: outTok,
+      costUsd: costUsd(this.config.llmModel, inTok, outTok),
+    });
+    return text.trim() || facts;
   }
 
   private async validate(

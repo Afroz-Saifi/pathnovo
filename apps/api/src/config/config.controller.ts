@@ -20,6 +20,7 @@ interface Setting {
 // response; only static option sets live here.
 const OPTIONS: Record<string, string[]> = {
   OCR_LANG: ["eng"],
+  ENUM_MODE: ["llm", "direct"],
 };
 
 // [key, env, description] — key indexes into Config; env is the var name.
@@ -38,6 +39,7 @@ const SPECS: Array<{ group: string; items: Array<[keyof Config | "apiKey", strin
       ["llmMaxRetries", "LLM_MAX_RETRIES", "Backoff retries on 429/5xx"],
       ["contextTokenBudget", "CONTEXT_TOKEN_BUDGET", "Prompt-assembly budget"],
       ["historyMaxTurns", "HISTORY_MAX_TURNS", "Multi-turn chat memory"],
+      ["enumMode", "ENUM_MODE", "List/count answers: LLM-written vs. raw delta output"],
       ["runTokenCeiling", "RUN_TOKEN_CEILING", "Per-run token ceiling"],
       ["apiKey", "OPENAI_API_KEY", "Secret — never returned; set via .env"],
     ],

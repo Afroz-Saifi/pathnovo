@@ -1,0 +1,68 @@
+# Pathnovo — Document Delta & Grounded Chat
+
+Ingest two revisions of a technical document (native PDF, scanned PDF, or DWG), compute a
+**structured delta** between them, render a **delta report**, and **chat** grounded in both
+documents and the delta — with citations, observability, and an evaluation harness.
+
+> Applied AI Engineer take-home. Built as a TypeScript monorepo.
+
+## Status
+
+Built vertically, one runnable slice at a time.
+
+- [x] **Slice 1 — Core delta on native PDFs** (this milestone): ingest a native PDF → canonical
+      representation → deterministic delta engine → Markdown + JSON report, runnable from a CLI.
+- [ ] Slice 2 — NestJS API + Postgres persistence + observability (runs / trace_events / usage_events)
+- [ ] Slice 3 — React (shadcn/ui) web UI: pairs · compare + markup overlay · chat · traces
+- [ ] Slice 4 — Grounded chat (hybrid retrieval + cited answers)
+- [ ] Slice 5 — Scanned-PDF (OCR) adapter + eval harness + scorecard
+
+## Architecture (one idea)
+
+Every input format is normalized into one **canonical representation** (sheets → typed, located
+content items with normalized bounding boxes + confidence). Everything downstream — delta, report,
+chat, eval — reads only that model, so a new format is one new adapter and nothing else changes.
+
+```
+PID A ─┐                                            ┌─ delta-report.md
+       ├─► ingest ─► canonical ─► delta engine ─────┤
+PID B ─┘   (adapters)   (model)   (align→classify)  └─ delta-report.json
+```
+
+## Requirements
+
+- Node 22 (`.nvmrc`), pnpm 9 (`corepack enable`)
+- Docker (from slice 2, for Postgres)
+- An OpenAI API key (from slice 4, for chat/eval) — copy `.env.example` to `.env`
+
+## Quick start
+
+```bash
+corepack enable
+pnpm install
+```
+
+Compute a delta between two native PDFs (slice 1):
+
+```bash
+pnpm --filter @pathnovo/api delta -- <pidA.pdf> <pidB.pdf>
+# → writes out/<comparison-id>/delta-report.{md,json}
+```
+
+## Layout
+
+```
+packages/core      canonical model + delta types (zod) — the shared contract
+packages/config    zod-validated env + thresholds (single source of truth)
+packages/pipeline  ingest adapters + canonical builder + delta engine + report
+apps/api           CLI now; NestJS API + observability from slice 2
+apps/web           React + shadcn/ui UI from slice 3
+scripts            sample-pair synthesis (also emits eval ground truth)
+data/samples       document pairs + provenance
+```
+
+## Design decisions & trade-offs
+
+Detailed in the design doc (kept out of this repo). Headlines: the delta engine is **deterministic**
+(alignment → classification, LLM isolated to description-only enrichment); the LLM provider is
+**swappable** behind one interface; observability mirrors a production trace-store pattern.

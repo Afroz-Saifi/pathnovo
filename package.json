@@ -1,0 +1,23 @@
+{
+  "name": "pathnovo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Document Delta & Grounded Chat — ingest two document revisions, compute a structured delta, chat grounded in both docs + the delta report.",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

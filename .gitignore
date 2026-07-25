@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Internal design artifacts — NOT part of the submission repo
+TECHNICAL-DESIGN.md
+diagrams/
+
+# Assignment brief — contains the INTERNAL hiring rubric; keep out of the repo
+2026-07-23-applied-ai-engineer-delta-chat-assignment.html
+
+# Raw provided inputs live at repo root only during design; the real copies
+# go under data/samples/ with provenance. Ignore the root originals.
+/Export Gas Compressor-P&ID (1).pdf
+/Lift Gas compressor-P&ID.pdf
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Node / build (forward-looking — scaffold not created yet)
+node_modules/
+dist/
+build/
+coverage/
+*.log

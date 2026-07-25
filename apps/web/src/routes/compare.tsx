@@ -192,7 +192,34 @@ export function ComparePage() {
 
         {/* scrollable report */}
         <Card className="flex min-h-0 flex-col">
-          <div className="border-b p-4 font-semibold">Delta report</div>
+          <div className="flex flex-col gap-2 border-b p-3">
+            <span className="font-semibold">Delta report</span>
+            <div className="flex flex-wrap gap-1.5">
+              {(["added", "removed", "modified"] as ChangeType[]).map((t) => {
+                const active = filters.has(t);
+                const count = t === "added" ? s.added : t === "removed" ? s.removed : s.modified;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => toggle(t)}
+                    title={`${active ? "Hide" : "Show"} ${t}`}
+                    className={cn(
+                      "flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition-opacity",
+                      !active && "opacity-40",
+                    )}
+                    style={{
+                      color: TYPE[t].color,
+                      borderColor: TYPE[t].color,
+                      backgroundColor: active ? `color-mix(in srgb, ${TYPE[t].color} 12%, transparent)` : "transparent",
+                    }}
+                  >
+                    <span className="font-mono">{TYPE[t].symbol}</span>
+                    {t} · {count}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <CardContent className="min-h-0 flex-1 overflow-y-auto p-2">
             {(["added", "removed", "modified"] as ChangeType[]).map((type) => {
               if (!filters.has(type)) return null;

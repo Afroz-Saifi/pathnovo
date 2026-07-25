@@ -19,6 +19,9 @@ export const TRACE_EVENT_TYPES = [
   "llm_call_started",
   "llm_call_completed",
   "citation_validation_failed",
+  // eval harness
+  "eval_delta_scored",
+  "eval_chat_scored",
 ] as const;
 
 export type TraceEventType = (typeof TRACE_EVENT_TYPES)[number];
@@ -44,6 +47,8 @@ export const MANDATORY_ATTRIBUTES: Record<TraceEventType, readonly string[]> = {
     "gen_ai.usage.output_tokens",
   ],
   citation_validation_failed: ["ref", "reason"],
+  eval_delta_scored: ["pair", "precision", "recall", "f1"],
+  eval_chat_scored: ["groundedness", "correctness", "refusal"],
 };
 
 export class MissingTraceAttributeError extends Error {

@@ -7,7 +7,7 @@ import { Card, CardContent } from "../components/ui/card";
 import { getMetrics, getRun, getRuns, type RunDetail, type RunSummary, type TraceEvent } from "../lib/api";
 import { cn } from "../lib/utils";
 
-const KINDS = ["all", "delta", "chat", "ingest", "eval"] as const;
+const KIND_ORDER = ["delta", "chat", "eval", "ingest"];
 
 function statusVariant(status: string): "success" | "destructive" | "warning" {
   return status === "ok" ? "success" : status === "failed" ? "destructive" : "warning";
@@ -116,7 +116,7 @@ function RunDetailView({ runId }: { runId: string }) {
 
 export function TracesPage() {
   const [selected, setSelected] = useState<string | null>(null);
-  const [kind, setKind] = useState<(typeof KINDS)[number]>("all");
+  const [kind, setKind] = useState<string>("all");
   const metrics = useQuery({ queryKey: ["metrics"], queryFn: getMetrics });
   const runs = useQuery<RunSummary[]>({
     queryKey: ["runs", kind],
@@ -125,6 +125,13 @@ export function TracesPage() {
 
   const m = metrics.data;
   const failed = m ? (m.runs.byStatus.failed ?? 0) : 0;
+  // Only show tabs for kinds that actually exist, so no tab is ever empty.
+  const byKind = m?.runs.byKind ?? {};
+  const kinds = [
+    "all",
+    ...KIND_ORDER.filter((k) => byKind[k]),
+    ...Object.keys(byKind).filter((k) => !KIND_ORDER.includes(k)),
+  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -136,7 +143,7 @@ export function TracesPage() {
       </div>
 
       <div className="flex gap-1">
-        {KINDS.map((k) => (
+        {kinds.map((k) => (
           <button
             key={k}
             onClick={() => setKind(k)}
@@ -146,6 +153,7 @@ export function TracesPage() {
             )}
           >
             {k}
+            {k !== "all" ? <span className="ml-1 text-xs text-muted-foreground">{byKind[k]}</span> : null}
           </button>
         ))}
       </div>

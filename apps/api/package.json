@@ -1,0 +1,20 @@
+{
+  "name": "@pathnovo/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "delta": "tsx src/cli/delta.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pathnovo/config": "workspace:*",
+    "@pathnovo/core": "workspace:*",
+    "@pathnovo/pipeline": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

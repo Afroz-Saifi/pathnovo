@@ -18,9 +18,12 @@ diagrams/
 .env.*
 !.env.example
 
-# Node / build (forward-looking — scaffold not created yet)
+# Node / build
 node_modules/
 dist/
 build/
 coverage/
 *.log
+
+# Generated delta reports
+out/

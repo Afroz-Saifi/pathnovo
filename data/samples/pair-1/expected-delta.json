@@ -1,0 +1,35 @@
+[
+  {
+    "changeType": "removed",
+    "itemKind": "line_spec",
+    "textA": "2\"-VF-43-9008-AS20S-00"
+  },
+  {
+    "changeType": "removed",
+    "itemKind": "note",
+    "textA": "NOTE 20"
+  },
+  {
+    "changeType": "modified",
+    "modifyKind": "moved",
+    "itemKind": "tag",
+    "textA": "26-CX-9021"
+  },
+  {
+    "changeType": "modified",
+    "modifyKind": "text",
+    "itemKind": "line_spec",
+    "textA": "4\"-PV-26-9020-FC11S-38",
+    "textB": "6\"-PV-26-9020-FC11S-38"
+  },
+  {
+    "changeType": "added",
+    "itemKind": "tag",
+    "textB": "26-PV-9099"
+  },
+  {
+    "changeType": "added",
+    "itemKind": "note",
+    "textB": "NOTE 45"
+  }
+]

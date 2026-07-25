@@ -34,8 +34,12 @@ export interface Citation {
 
 type EnumCat = "added" | "removed" | "modified" | "moved";
 const ENUM_PAGE = 60;
+/** Per-message cap when replaying history, so a long list can't dominate context. */
+const HISTORY_MSG_CHARS = 1200;
 const SPATIAL_Q = /\b(near|around|close to|beside|next to|located|where\b)/i;
 const PAGINATION_Q = /\b(more|next|continue|rest|following|another|remaining)\b/i;
+/** "is that all?" style follow-ups about the current enumeration. */
+const STATUS_Q = /(just these|that'?s it|is that all|anything else|any other|all of them|nothing else|complete\?)/i;
 const LIST_CUE_Q = /\b(list|every|each|enumerate|how many|show me|give me|any (more|other)|other than|all)\b/i;
 
 function enumCategory(q: string): EnumCat | null {
@@ -51,7 +55,8 @@ function isEnumerationQuestion(q: string): boolean {
   if (SPATIAL_Q.test(q)) return false;
   if (PAGINATION_Q.test(q)) return true;
   const cat = enumCategory(q);
-  return LIST_CUE_Q.test(q) || (cat !== null && /\b(what|which|any)\b/i.test(q));
+  // No trailing \b — "whats removed?" must match as well as "what is removed?".
+  return LIST_CUE_Q.test(q) || (cat !== null && /\b(what|which|any|tell)/i.test(q));
 }
 
 /** Prisma where-filter for a change category. */
@@ -82,9 +87,13 @@ export class ChatService {
 
     const run = await this.runs.start("chat", { requestId, pidA: comparison.pidA, pidB: comparison.pidB });
     try {
-      // Bulk enumeration ("what is added", "list all removed", "show more") is a
-      // paginated read of the delta — answered deterministically, no LLM.
-      if (isEnumerationQuestion(question)) {
+      // Bulk enumeration ("what is added", "list all removed", "show more") and
+      // "is that all?" follow-ups are paginated reads of the delta — answered
+      // deterministically from the DB, no LLM.
+      const priorEnum = sessionId
+        ? await this.prisma.chatSession.findUnique({ where: { id: sessionId }, select: { enumType: true } })
+        : null;
+      if (isEnumerationQuestion(question) || (STATUS_Q.test(question) && priorEnum?.enumType)) {
         return await this.enumerate(comparisonId, question, sessionId, run);
       }
 
@@ -116,9 +125,13 @@ export class ChatService {
       const baseMax = retrieved.enumTotal !== undefined ? Math.max(this.config.llmMaxOutputTokens, 6000) : this.config.llmMaxOutputTokens;
       const maxOutput = isReasoning ? Math.max(baseMax, 8000) : baseMax;
 
+      // Multi-turn: replay the last N turns so follow-ups resolve.
+      const history = await this.loadHistory(sessionId, this.config.historyMaxTurns);
+
       await run.emit("llm_call_started", {
         "gen_ai.system": this.config.llmProvider,
         "gen_ai.request.model": this.config.llmModel,
+        history_turns: Math.floor(history.length / 2),
       });
       const t0 = Date.now();
 
@@ -128,7 +141,7 @@ export class ChatService {
           schema: AnswerSchema,
           maxTokens: maxOutput,
           system: SYSTEM_PROMPT,
-          prompt: userPrompt,
+          messages: [...history, { role: "user" as const, content: userPrompt }],
           ...(isReasoning ? {} : { temperature: this.config.llmTemperature }),
         });
 
@@ -159,8 +172,15 @@ export class ChatService {
           "gen_ai.request.model": this.config.llmModel,
           "gen_ai.usage.input_tokens": inTok,
           "gen_ai.usage.output_tokens": outTok,
-          // Prompt + completion for inspection in the trace viewer (size-capped).
-          "gen_ai.prompt": `${SYSTEM_PROMPT}\n\n${userPrompt}`.slice(0, 6000),
+          // Prompt (system + replayed history + current turn) and completion, for
+          // inspection in the trace viewer (size-capped).
+          "gen_ai.prompt": [
+            SYSTEM_PROMPT,
+            ...history.map((m) => `[${m.role}] ${m.content}`),
+            `[user] ${userPrompt}`,
+          ]
+            .join("\n\n")
+            .slice(0, 8000),
           "gen_ai.completion": JSON.stringify(object).slice(0, 4000),
         },
         { durationMs: Date.now() - t0 },
@@ -190,6 +210,30 @@ export class ChatService {
     }
   }
 
+  /**
+   * Prior turns of this session, oldest-first, for multi-turn context — so a
+   * follow-up like "just these?" or "and the removed ones?" resolves against
+   * what was already said. Capped by HISTORY_MAX_TURNS; long answers (a 60-item
+   * enumeration) are truncated so history can't crowd out the retrieved context.
+   */
+  private async loadHistory(
+    sessionId: string | undefined,
+    maxTurns: number,
+  ): Promise<Array<{ role: "user" | "assistant"; content: string }>> {
+    if (!sessionId || maxTurns <= 0) return [];
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: "desc" },
+      take: maxTurns * 2, // a turn = user + assistant
+    });
+    return rows
+      .reverse()
+      .map((m) => ({
+        role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+        content: m.content.length > HISTORY_MSG_CHARS ? `${m.content.slice(0, HISTORY_MSG_CHARS)}…` : m.content,
+      }));
+  }
+
   /** Deterministic, paginated enumeration straight from delta_entries. */
   private async enumerate(
     comparisonId: string,
@@ -198,6 +242,22 @@ export class ChatService {
     run: Awaited<ReturnType<RunService["start"]>>,
   ) {
     const session = await this.resolveSession(comparisonId, sessionId);
+
+    // "is that all?" — report progress against the current enumeration.
+    if (STATUS_Q.test(question) && !enumCategory(question) && session.enumType) {
+      const cat = session.enumType as EnumCat;
+      const total = await this.prisma.deltaEntry.count({ where: { comparisonId, ...catFilter(cat) } });
+      const shown = Math.min(session.enumOffset, total);
+      const answer =
+        shown >= total
+          ? `Yes — that's the complete set: all **${total}** ${cat} items.`
+          : `No — you've seen **${shown} of ${total}** ${cat} items. Ask "show more" for the next ${Math.min(ENUM_PAGE, total - shown)}.`;
+      await run.emit("retrieval_completed", { vector_hits: 0, fts_hits: 0, fused_k: 0 });
+      await this.persistTurn(session.id, question, answer, [], "grounded");
+      await run.finish("ok", { comparisonId });
+      return { answer, citations: [] as Citation[], confidence: "grounded", sessionId: session.id, runId: run.runId };
+    }
+
     const pagination = PAGINATION_Q.test(question);
     let cat = enumCategory(question);
     if (pagination && !cat && session.enumType) cat = session.enumType as EnumCat;
@@ -263,9 +323,13 @@ export class ChatService {
 
     let confidence = object.confidence as string;
     if (confidence === "grounded" && valid.length < object.citations.length) confidence = "partial";
-    // For an enumeration the delta list itself is the grounding, so zero explicit
-    // citations shouldn't force "not_found".
-    if (!isEnum && confidence !== "not_found" && valid.length === 0) confidence = "not_found";
+    // Only the model itself declaring it can't answer — or answering with no
+    // attempt to cite at all — is "not_found". If it cited but the quotes failed
+    // verification, the answer exists yet is unverified: that's "partial", not
+    // "not found" (which reads as "no answer" next to a real one).
+    if (!isEnum && valid.length === 0) {
+      confidence = object.citations.length === 0 ? "not_found" : "partial";
+    }
     return { citations: valid, confidence };
   }
 
@@ -344,7 +408,11 @@ Rules:
 - Use ONLY the provided context blocks. Never use outside knowledge.
 - Back every claim with a citation: set "ref" to the [n] label of the supporting block and copy the exact supporting text into "quote".
 - If the context does not support an answer, set confidence to "not_found" and say you cannot answer from these documents. Do not guess.
-- Set confidence to "grounded" when fully supported by citations, "partial" when only partly supported.`;
+- Set confidence to "grounded" when fully supported by citations, "partial" when only partly supported.
+- Earlier turns of this conversation are provided. Use them to resolve follow-ups
+  and references ("just these?", "and the removed ones?", "what about that valve?")
+  instead of asking the user to repeat themselves. Grounding still comes only from
+  the context blocks of the CURRENT turn.`;
 
 function renderContext(chunks: RetrievedChunk[]): string {
   return chunks

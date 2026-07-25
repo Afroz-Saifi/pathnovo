@@ -68,14 +68,15 @@ export class ChatService {
       const context = renderContext(retrieved.chunks);
       const enumNote =
         retrieved.enumTotal !== undefined
-          ? `\n\nThe user asked to enumerate. The context contains ${retrieved.chunks.length} of ${retrieved.enumTotal} matching changes. List every one in the context; ${retrieved.enumCapped ? `state that there are ${retrieved.enumTotal} in total and these are the first ${retrieved.chunks.length}` : "this is the complete set"}.`
+          ? `\n\nThe user asked to enumerate. The context contains ${retrieved.chunks.length} of ${retrieved.enumTotal} matching changes. List every one in the context as a concise item (its name/text only). ${retrieved.enumCapped ? `State that there are ${retrieved.enumTotal} in total and these are the first ${retrieved.chunks.length}.` : "This is the complete set."} For a long list you do NOT need a citation per item — a few representative citations to the delta blocks are enough; set confidence to "grounded".`
           : "";
       const userPrompt = `Context blocks:\n${context}${enumNote}\n\nQuestion: ${question}`;
       // Reasoning models (o1/o3/gpt-5) reject a custom temperature and spend
       // the token budget on hidden reasoning, so give them much more room and
       // omit temperature.
       const isReasoning = /^(o1|o3|gpt-5)/i.test(this.config.llmModel);
-      const baseMax = retrieved.enumTotal !== undefined ? Math.max(this.config.llmMaxOutputTokens, 3000) : this.config.llmMaxOutputTokens;
+      // Enumerations list many items — give them plenty of output room.
+      const baseMax = retrieved.enumTotal !== undefined ? Math.max(this.config.llmMaxOutputTokens, 6000) : this.config.llmMaxOutputTokens;
       const maxOutput = isReasoning ? Math.max(baseMax, 8000) : baseMax;
 
       await run.emit("llm_call_started", {
@@ -135,7 +136,12 @@ export class ChatService {
         costUsd: costUsd(this.config.llmModel, inTok, outTok),
       });
 
-      const { citations, confidence } = await this.validate(object, retrieved.chunks, run);
+      const { citations, confidence } = await this.validate(
+        object,
+        retrieved.chunks,
+        run,
+        retrieved.enumTotal !== undefined,
+      );
       const session = await this.resolveSession(comparisonId, sessionId);
       await this.persistTurn(session.id, question, object.answer, citations, confidence);
 
@@ -151,6 +157,7 @@ export class ChatService {
     object: z.infer<typeof AnswerSchema>,
     chunks: RetrievedChunk[],
     run: Awaited<ReturnType<RunService["start"]>>,
+    isEnum = false,
   ): Promise<{ citations: Citation[]; confidence: string }> {
     const valid: Citation[] = [];
     for (const c of object.citations) {
@@ -169,7 +176,9 @@ export class ChatService {
 
     let confidence = object.confidence as string;
     if (confidence === "grounded" && valid.length < object.citations.length) confidence = "partial";
-    if (confidence !== "not_found" && valid.length === 0) confidence = "not_found";
+    // For an enumeration the delta list itself is the grounding, so zero explicit
+    // citations shouldn't force "not_found".
+    if (!isEnum && confidence !== "not_found" && valid.length === 0) confidence = "not_found";
     return { citations: valid, confidence };
   }
 

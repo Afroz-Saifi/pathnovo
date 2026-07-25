@@ -25,14 +25,27 @@ export interface RetrievalResult {
 }
 
 const CHANGE_INTENT = /\b(chang|add|remov|delet|modif|revis|differ|new|mov|updat)/i;
-const ENUM_INTENT = /\b(list|all|every|each|enumerate|how many)\b/i;
-const ENUM_CAP = 80;
+const ENUM_CAP = 60;
+
+// Explicit "give me the whole set" cues.
+const LIST_CUE = /\b(list|every|each|enumerate|how many|show me|give me|any (more|other)|other than|all)\b/i;
+// A spatial/specific qualifier → the user wants a targeted answer, not the full set.
+const SPATIAL = /\b(near|around|close to|beside|next to|located|where\b)/i;
+// A change type + an interrogative ("what/which/any is added") also means enumerate.
+const INTERROGATIVE = /\b(what|which|any)\b/i;
 
 function changeTypeOf(q: string): "added" | "removed" | "modified" | null {
   if (/\b(remov|delet)/i.test(q)) return "removed";
   if (/\b(add|new|addition)/i.test(q)) return "added";
   if (/\b(modif|chang|updat|edit|revis|move)/i.test(q)) return "modified";
   return null;
+}
+
+/** Does the question ask to enumerate a whole change set (vs. a specific ask)? */
+function isEnumeration(q: string): boolean {
+  if (SPATIAL.test(q)) return false;
+  const type = changeTypeOf(q);
+  return LIST_CUE.test(q) || (type !== null && INTERROGATIVE.test(q));
 }
 
 function chunkIsType(text: string, type: "added" | "removed" | "modified"): boolean {
@@ -60,7 +73,7 @@ export class RetrievalService {
 
     // Enumeration path — "list all removed" needs every matching delta entry,
     // not just the top-K, so pull the full set (capped) directly.
-    if (ENUM_INTENT.test(question)) {
+    if (isEnumeration(question)) {
       const type = changeTypeOf(question);
       const deltas = rows.filter(
         (r) => r.sourceType === "delta" && (type === null || chunkIsType(r.text, type)),

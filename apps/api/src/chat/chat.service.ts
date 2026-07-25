@@ -32,6 +32,37 @@ export interface Citation {
   quote: string;
 }
 
+type EnumCat = "added" | "removed" | "modified" | "moved";
+const ENUM_PAGE = 60;
+const SPATIAL_Q = /\b(near|around|close to|beside|next to|located|where\b)/i;
+const PAGINATION_Q = /\b(more|next|continue|rest|following|another|remaining)\b/i;
+const LIST_CUE_Q = /\b(list|every|each|enumerate|how many|show me|give me|any (more|other)|other than|all)\b/i;
+
+function enumCategory(q: string): EnumCat | null {
+  if (/\bmov/i.test(q)) return "moved";
+  if (/\b(remov|delet)/i.test(q)) return "removed";
+  if (/\b(add|new|addition)/i.test(q)) return "added";
+  if (/\b(modif|chang|updat|edit|revis)/i.test(q)) return "modified";
+  return null;
+}
+
+/** A bulk enumeration / pagination request (vs. a specific, answerable question). */
+function isEnumerationQuestion(q: string): boolean {
+  if (SPATIAL_Q.test(q)) return false;
+  if (PAGINATION_Q.test(q)) return true;
+  const cat = enumCategory(q);
+  return LIST_CUE_Q.test(q) || (cat !== null && /\b(what|which|any)\b/i.test(q));
+}
+
+/** Prisma where-filter for a change category. */
+function catFilter(cat: EnumCat | null): Record<string, unknown> {
+  if (cat === "added") return { changeType: "added" };
+  if (cat === "removed") return { changeType: "removed" };
+  if (cat === "moved") return { changeType: "modified", modifyKind: "moved" };
+  if (cat === "modified") return { changeType: "modified", modifyKind: { not: "moved" } };
+  return {};
+}
+
 @Injectable()
 export class ChatService {
   constructor(
@@ -51,6 +82,12 @@ export class ChatService {
 
     const run = await this.runs.start("chat", { requestId, pidA: comparison.pidA, pidB: comparison.pidB });
     try {
+      // Bulk enumeration ("what is added", "list all removed", "show more") is a
+      // paginated read of the delta — answered deterministically, no LLM.
+      if (isEnumerationQuestion(question)) {
+        return await this.enumerate(comparisonId, question, sessionId, run);
+      }
+
       const retrieved = await run.span(
         "retrieval_completed",
         () => this.retrieval.retrieve(comparisonId, question),
@@ -151,6 +188,56 @@ export class ChatService {
       await run.finish("failed", { error: (err as Error).message });
       throw err;
     }
+  }
+
+  /** Deterministic, paginated enumeration straight from delta_entries. */
+  private async enumerate(
+    comparisonId: string,
+    question: string,
+    sessionId: string | undefined,
+    run: Awaited<ReturnType<RunService["start"]>>,
+  ) {
+    const session = await this.resolveSession(comparisonId, sessionId);
+    const pagination = PAGINATION_Q.test(question);
+    let cat = enumCategory(question);
+    if (pagination && !cat && session.enumType) cat = session.enumType as EnumCat;
+    const where = { comparisonId, ...catFilter(cat) };
+    const offset = pagination && session.enumType === (cat ?? null) ? session.enumOffset : 0;
+
+    const total = await this.prisma.deltaEntry.count({ where });
+    const rows = await this.prisma.deltaEntry.findMany({
+      where,
+      orderBy: { id: "asc" },
+      skip: offset,
+      take: ENUM_PAGE,
+    });
+    await run.emit("retrieval_completed", { vector_hits: 0, fts_hits: 0, fused_k: rows.length });
+
+    const label = cat ?? "change";
+    let answer: string;
+    let confidence: string;
+    if (rows.length === 0) {
+      answer = offset > 0 ? `That's all — you've seen all ${total} ${label} items.` : `No ${label} items found.`;
+      confidence = total > 0 ? "grounded" : "not_found";
+    } else {
+      const items = rows.map((e, i) => {
+        const name = e.textB || e.textA || e.description;
+        return `${offset + i + 1}. ${name}${e.itemKind === "geometry" ? " _(geometry)_" : ""}`;
+      });
+      const end = offset + rows.length;
+      const cap = label.charAt(0).toUpperCase() + label.slice(1);
+      answer = `**${cap} items ${offset + 1}–${end} of ${total}:**\n\n${items.join("\n")}`;
+      answer += end < total ? `\n\n_Ask "show more" for the next ${Math.min(ENUM_PAGE, total - end)}._` : `\n\n_That's all ${total}._`;
+      confidence = "grounded";
+      await this.prisma.chatSession.update({
+        where: { id: session.id },
+        data: { enumType: cat ?? null, enumOffset: end },
+      });
+    }
+
+    await this.persistTurn(session.id, question, answer, [], confidence);
+    await run.finish("ok", { comparisonId });
+    return { answer, citations: [] as Citation[], confidence, sessionId: session.id, runId: run.runId };
   }
 
   private async validate(

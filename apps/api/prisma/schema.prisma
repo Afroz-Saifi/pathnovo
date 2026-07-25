@@ -69,6 +69,9 @@ model ChatSession {
   comparisonId String
   comparison   Comparison    @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
   messages     ChatMessage[]
+  // Cursor for paginated enumeration ("show more").
+  enumType     String?
+  enumOffset   Int           @default(0)
   createdAt    DateTime      @default(now())
 
   @@index([comparisonId])

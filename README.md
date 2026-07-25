@@ -5,6 +5,7 @@ Ingest two revisions of a technical document (native PDF, scanned PDF, or DWG), 
 documents and the delta — with citations, observability, and an evaluation harness.
 
 > Applied AI Engineer take-home. Built as a TypeScript monorepo.
+> **See [DEMO.md](DEMO.md) for a walkthrough** (delta + grounded chat + trace + eval scorecard).
 
 ## Status
 

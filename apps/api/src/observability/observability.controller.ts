@@ -16,26 +16,36 @@ export class ObservabilityController {
   }
 
   @Get("runs")
-  async listRuns(@Query("limit") limit?: string) {
+  async listRuns(@Query("limit") limit?: string, @Query("kind") kind?: string) {
     const take = Math.min(Number(limit ?? 50) || 50, 200);
     const runs = await this.prisma.run.findMany({
+      where: kind ? { kind } : undefined,
       orderBy: { startedAt: "desc" },
       take,
-      include: { _count: { select: { traceEvents: true, usageEvents: true } } },
+      include: {
+        _count: { select: { traceEvents: true } },
+        usageEvents: { select: { inputTokens: true, outputTokens: true, costUsd: true } },
+      },
     });
-    return runs.map((r) => ({
-      id: r.id,
-      kind: r.kind,
-      status: r.status,
-      pidA: r.pidA,
-      pidB: r.pidB,
-      comparisonId: r.comparisonId,
-      startedAt: r.startedAt,
-      finishedAt: r.finishedAt,
-      durationMs: r.finishedAt ? r.finishedAt.getTime() - r.startedAt.getTime() : null,
-      events: r._count.traceEvents,
-      error: r.error,
-    }));
+    return runs.map((r) => {
+      const tokens = r.usageEvents.reduce((s, u) => s + u.inputTokens + u.outputTokens, 0);
+      const costUsd = r.usageEvents.reduce((s, u) => s + u.costUsd, 0);
+      return {
+        id: r.id,
+        kind: r.kind,
+        status: r.status,
+        pidA: r.pidA,
+        pidB: r.pidB,
+        comparisonId: r.comparisonId,
+        startedAt: r.startedAt,
+        finishedAt: r.finishedAt,
+        durationMs: r.finishedAt ? r.finishedAt.getTime() - r.startedAt.getTime() : null,
+        events: r._count.traceEvents,
+        tokens,
+        costUsd: Math.round(costUsd * 1e6) / 1e6,
+        error: r.error,
+      };
+    });
   }
 
   @Get("runs/:id")

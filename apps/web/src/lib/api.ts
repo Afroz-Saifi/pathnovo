@@ -75,6 +75,8 @@ export interface RunSummary {
   startedAt: string;
   durationMs: number | null;
   events: number;
+  tokens: number;
+  costUsd: number;
   error: string | null;
 }
 
@@ -119,8 +121,9 @@ export function reportMarkdownUrl(id: string): string {
   return `${API}/comparisons/${id}/report.md`;
 }
 
-export async function getRuns(): Promise<RunSummary[]> {
-  return json(await fetch(`${API}/runs?limit=50`));
+export async function getRuns(kind?: string): Promise<RunSummary[]> {
+  const q = kind ? `&kind=${kind}` : "";
+  return json(await fetch(`${API}/runs?limit=50${q}`));
 }
 
 export async function getRun(id: string): Promise<RunDetail> {

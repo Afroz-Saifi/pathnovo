@@ -62,6 +62,7 @@ export class ChatService {
       }
 
       const context = renderContext(retrieved.chunks);
+      const userPrompt = `Context blocks:\n${context}\n\nQuestion: ${question}`;
       await run.emit("llm_call_started", {
         "gen_ai.system": "openai",
         "gen_ai.request.model": this.config.llmModel,
@@ -73,7 +74,7 @@ export class ChatService {
         temperature: this.config.llmTemperature,
         maxTokens: this.config.llmMaxOutputTokens,
         system: SYSTEM_PROMPT,
-        prompt: `Context blocks:\n${context}\n\nQuestion: ${question}`,
+        prompt: userPrompt,
       });
       const inTok = usage?.promptTokens ?? 0;
       const outTok = usage?.completionTokens ?? 0;
@@ -84,6 +85,9 @@ export class ChatService {
           "gen_ai.request.model": this.config.llmModel,
           "gen_ai.usage.input_tokens": inTok,
           "gen_ai.usage.output_tokens": outTok,
+          // Prompt + completion for inspection in the trace viewer (size-capped).
+          "gen_ai.prompt": `${SYSTEM_PROMPT}\n\n${userPrompt}`.slice(0, 6000),
+          "gen_ai.completion": JSON.stringify(object).slice(0, 4000),
         },
         { durationMs: Date.now() - t0 },
       );

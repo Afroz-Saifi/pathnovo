@@ -2,12 +2,13 @@ import { createHash } from "node:crypto";
 import { basename, extname } from "node:path";
 
 import { Injectable } from "@nestjs/common";
-import { type Config, loadConfig } from "@pathnovo/config";
+import type { Config } from "@pathnovo/config";
 import type { CanonicalDocument, Comparison, DeltaEntry } from "@pathnovo/core";
 import { computeDelta, detectFormat, renderPdfToImages, toMarkdown } from "@pathnovo/pipeline";
 import { Prisma } from "@prisma/client";
 
 import { IndexingService } from "../chat/indexing.service.js";
+import { ConfigService } from "../config/config.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { RunContext } from "../observability/run.service.js";
 import { RunService } from "../observability/run.service.js";
@@ -19,13 +20,16 @@ export interface UploadedDoc {
 
 @Injectable()
 export class ComparisonsService {
-  private readonly config: Config = loadConfig();
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly runs: RunService,
     private readonly indexing: IndexingService,
+    private readonly configService: ConfigService,
   ) {}
+
+  private get config(): Config {
+    return this.configService.get();
+  }
 
   async createFromFiles(a: UploadedDoc, b: UploadedDoc, requestId: string) {
     const pidA = pid(a.originalname);

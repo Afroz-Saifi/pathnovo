@@ -1,12 +1,12 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Send } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
-import { askChat, type Citation } from "../lib/api";
+import { askChat, type Citation, getChatHistory } from "../lib/api";
 import { cn } from "../lib/utils";
 
 interface Msg {
@@ -27,6 +27,22 @@ export function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | undefined>();
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Load prior history for this comparison's latest session.
+  const { data: history } = useQuery({ queryKey: ["chat-history", id], queryFn: () => getChatHistory(id) });
+  useEffect(() => {
+    if (!history) return;
+    setSessionId(history.sessionId ?? undefined);
+    setMessages(
+      history.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        citations: m.citations,
+        confidence: m.confidence ?? undefined,
+      })),
+    );
+  }, [history]);
 
   const mutation = useMutation({
     mutationFn: (q: string) => askChat(id, q, sessionId),
@@ -38,6 +54,11 @@ export function ChatPage() {
       ]);
     },
   });
+
+  // Auto-scroll to the newest message.
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, mutation.isPending]);
 
   function send() {
     const q = input.trim();
@@ -100,6 +121,7 @@ export function ChatPage() {
         {mutation.isError ? (
           <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
         ) : null}
+        <div ref={bottomRef} />
       </div>
 
       <div className="flex gap-2">

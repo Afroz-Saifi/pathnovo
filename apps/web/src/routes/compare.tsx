@@ -154,8 +154,11 @@ export function ComparePage() {
             {TYPE[t].label}
           </label>
         ))}
-        <label className="flex items-center gap-2 text-muted-foreground">
-          confidence ≥ {minConf.toFixed(2)}
+        <label
+          className="flex items-center gap-2 text-muted-foreground"
+          title="How sure the delta engine is about each change (0–1). Drag to hide lower-confidence changes from the overlay and the report."
+        >
+          min confidence {minConf.toFixed(2)}
           <input
             type="range"
             min={0}
@@ -192,8 +195,9 @@ export function ComparePage() {
           <div className="border-b p-4 font-semibold">Delta report</div>
           <CardContent className="min-h-0 flex-1 overflow-y-auto p-2">
             {(["added", "removed", "modified"] as ChangeType[]).map((type) => {
+              if (!filters.has(type)) return null;
               const rows = data.entries
-                .filter((e) => e.changeType === type)
+                .filter((e) => e.changeType === type && e.confidence >= minConf)
                 .sort((a, b) => b.confidence - a.confidence);
               if (rows.length === 0) return null;
               return (

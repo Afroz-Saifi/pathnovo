@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
-import { type Config, loadConfig } from "@pathnovo/config";
+import type { Config } from "@pathnovo/config";
 
+import { ConfigService } from "../config/config.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { embedQuery } from "./embeddings.js";
 
@@ -18,21 +19,69 @@ export interface RetrievalResult {
   vectorHits: number;
   ftsHits: number;
   queryTokens: number;
+  /** Set when the question asks to enumerate a change type. */
+  enumTotal?: number;
+  enumCapped?: boolean;
 }
 
 const CHANGE_INTENT = /\b(chang|add|remov|delet|modif|revis|differ|new|mov|updat)/i;
+const ENUM_INTENT = /\b(list|all|every|each|enumerate|how many)\b/i;
+const ENUM_CAP = 80;
+
+function changeTypeOf(q: string): "added" | "removed" | "modified" | null {
+  if (/\b(remov|delet)/i.test(q)) return "removed";
+  if (/\b(add|new|addition)/i.test(q)) return "added";
+  if (/\b(modif|chang|updat|edit|revis|move)/i.test(q)) return "modified";
+  return null;
+}
+
+function chunkIsType(text: string, type: "added" | "removed" | "modified"): boolean {
+  if (type === "added") return text.startsWith("Added");
+  if (type === "removed") return text.startsWith("Removed");
+  return text.startsWith("Changed") || text.startsWith("Moved");
+}
 
 @Injectable()
 export class RetrievalService {
-  private readonly config: Config = loadConfig();
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
 
-  constructor(private readonly prisma: PrismaService) {}
+  private get config(): Config {
+    return this.configService.get();
+  }
 
   async retrieve(comparisonId: string, question: string): Promise<RetrievalResult> {
     const rows = await this.prisma.chunk.findMany({ where: { comparisonId } });
     if (rows.length === 0) return { chunks: [], vectorHits: 0, ftsHits: 0, queryTokens: 0 };
 
     const { embedding: qvec, tokens } = await embedQuery(question, this.config.embeddingModel);
+
+    // Enumeration path — "list all removed" needs every matching delta entry,
+    // not just the top-K, so pull the full set (capped) directly.
+    if (ENUM_INTENT.test(question)) {
+      const type = changeTypeOf(question);
+      const deltas = rows.filter(
+        (r) => r.sourceType === "delta" && (type === null || chunkIsType(r.text, type)),
+      );
+      const capped = deltas.slice(0, ENUM_CAP);
+      return {
+        chunks: capped.map((r, i) => ({
+          label: i + 1,
+          id: r.id,
+          sourceType: r.sourceType,
+          sheet: r.sheet,
+          text: r.text,
+          refs: r.refs as string[],
+        })),
+        vectorHits: 0,
+        ftsHits: 0,
+        queryTokens: tokens,
+        enumTotal: deltas.length,
+        enumCapped: deltas.length > ENUM_CAP,
+      };
+    }
 
     // Semantic leg — cosine similarity.
     const vector = rows

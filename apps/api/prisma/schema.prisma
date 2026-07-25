@@ -75,6 +75,15 @@ model ChatSession {
   @@map("chat_sessions")
 }
 
+// Runtime config overrides (env-var-keyed), merged over process.env on load.
+model AppConfig {
+  id        String   @id @default("singleton")
+  overrides Json     @default("{}")
+  updatedAt DateTime @updatedAt
+
+  @@map("app_config")
+}
+
 model ChatMessage {
   id         String      @id @default(cuid())
   sessionId  String

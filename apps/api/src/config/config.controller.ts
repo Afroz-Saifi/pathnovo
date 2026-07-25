@@ -1,81 +1,121 @@
-import { Controller, Get } from "@nestjs/common";
-import { type Config, loadConfig } from "@pathnovo/config";
+import { Body, Controller, Delete, Get, Patch } from "@nestjs/common";
+import type { Config } from "@pathnovo/config";
+
+import { ConfigService } from "./config.service.js";
 
 interface Setting {
   key: string;
   env: string;
   value: string | number | boolean;
+  type: "number" | "boolean" | "string";
   desc: string;
+  editable: boolean;
+  overridden: boolean;
 }
 
-/**
- * Read-only view of the effective configuration, grouped and described.
- * Every value is an env var (see .env.example); the secret is never returned.
- */
+// [key, env, description] — key indexes into Config; env is the var name.
+const SPECS: Array<{ group: string; items: Array<[keyof Config | "apiKey", string, string]> }> = [
+  {
+    group: "LLM",
+    items: [
+      ["llmProvider", "LLM_PROVIDER", "AI SDK provider (swap seam)"],
+      ["llmModel", "LLM_MODEL", "Chat answers + delta enrichment"],
+      ["visionModel", "VISION_MODEL", "OCR-assist crops"],
+      ["judgeModel", "JUDGE_MODEL", "Eval judge"],
+      ["embeddingModel", "EMBEDDING_MODEL", "Chunk + query embeddings"],
+      ["llmTemperature", "LLM_TEMPERATURE", "All LLM calls"],
+      ["llmMaxOutputTokens", "LLM_MAX_OUTPUT_TOKENS", "Per answer/enrichment"],
+      ["llmTimeoutMs", "LLM_TIMEOUT_MS", "LLM call timeout"],
+      ["llmMaxRetries", "LLM_MAX_RETRIES", "Backoff retries on 429/5xx"],
+      ["contextTokenBudget", "CONTEXT_TOKEN_BUDGET", "Prompt-assembly budget"],
+      ["historyMaxTurns", "HISTORY_MAX_TURNS", "Multi-turn chat memory"],
+      ["runTokenCeiling", "RUN_TOKEN_CEILING", "Per-run token ceiling"],
+      ["apiKey", "OPENAI_API_KEY", "Secret — never returned; set via .env"],
+    ],
+  },
+  {
+    group: "Ingestion",
+    items: [
+      ["scannedTextThreshold", "SCANNED_TEXT_THRESHOLD", "Chars/page below → scanned"],
+      ["ocrDpi", "OCR_DPI", "OCR render resolution"],
+      ["ocrLang", "OCR_LANG", "Tesseract language"],
+      ["visionAssist", "VISION_ASSIST", "LLM re-read of low-conf OCR"],
+      ["visionAssistThreshold", "VISION_ASSIST_THRESHOLD", "OCR conf below → vision assist"],
+      ["visionMaxCropsPerSheet", "VISION_MAX_CROPS_PER_SHEET", "Bounded assist cost"],
+    ],
+  },
+  {
+    group: "Delta engine",
+    items: [
+      ["matchThreshold", "MATCH_THRESHOLD", "Max cost to accept a match"],
+      ["moveTolerance", "MOVE_TOLERANCE", "Displacement → 'moved'"],
+      ["wText", "W_TEXT", "Text-similarity weight"],
+      ["wSpatial", "W_SPATIAL", "Spatial-distance weight"],
+      ["wKind", "W_KIND", "Kind-mismatch weight"],
+      ["anchorMinPairs", "ANCHOR_MIN_PAIRS", "Min anchors for registration"],
+      ["enrich", "ENRICH", "LLM description enrichment"],
+    ],
+  },
+  {
+    group: "Retrieval",
+    items: [
+      ["chunkTargetChars", "CHUNK_TARGET_CHARS", "Target chunk size"],
+      ["vectorTop", "VECTOR_TOP", "Semantic candidates"],
+      ["ftsTop", "FTS_TOP", "Keyword candidates"],
+      ["rrfK", "RRF_K", "Reciprocal-rank-fusion constant"],
+      ["retrievalK", "RETRIEVAL_K", "Chunks per answer"],
+    ],
+  },
+  {
+    group: "Database",
+    items: [["databaseUrl", "DATABASE_URL", "Postgres connection (redacted)"]],
+  },
+];
+
 @Controller("config")
 export class ConfigController {
+  constructor(private readonly config: ConfigService) {}
+
   @Get()
-  get(): { groups: Array<{ name: string; items: Setting[] }> } {
-    const c: Config = loadConfig();
-    const dbRedacted = c.databaseUrl.replace(/:\/\/([^:]+):[^@]+@/, "://$1:****@");
+  get() {
+    return this.build();
+  }
+
+  @Patch()
+  async update(@Body() body: Record<string, unknown>) {
+    await this.config.update(body);
+    return this.build();
+  }
+
+  @Delete()
+  async reset() {
+    await this.config.reset();
+    return this.build();
+  }
+
+  private build(): { groups: Array<{ name: string; items: Setting[] }> } {
+    const c = this.config.get();
+    const overridden = new Set(this.config.overriddenEnvKeys());
     return {
-      groups: [
-        {
-          name: "LLM",
-          items: [
-            { key: "provider", env: "LLM_PROVIDER", value: c.llmProvider, desc: "AI SDK provider (swap seam)" },
-            { key: "model", env: "LLM_MODEL", value: c.llmModel, desc: "Chat answers + delta enrichment" },
-            { key: "visionModel", env: "VISION_MODEL", value: c.visionModel, desc: "OCR-assist crops" },
-            { key: "judgeModel", env: "JUDGE_MODEL", value: c.judgeModel, desc: "Eval judge" },
-            { key: "embeddingModel", env: "EMBEDDING_MODEL", value: c.embeddingModel, desc: "Chunk + query embeddings" },
-            { key: "temperature", env: "LLM_TEMPERATURE", value: c.llmTemperature, desc: "All LLM calls" },
-            { key: "maxOutputTokens", env: "LLM_MAX_OUTPUT_TOKENS", value: c.llmMaxOutputTokens, desc: "Per answer/enrichment" },
-            { key: "timeoutMs", env: "LLM_TIMEOUT_MS", value: c.llmTimeoutMs, desc: "LLM call timeout" },
-            { key: "maxRetries", env: "LLM_MAX_RETRIES", value: c.llmMaxRetries, desc: "Backoff retries on 429/5xx" },
-            { key: "contextTokenBudget", env: "CONTEXT_TOKEN_BUDGET", value: c.contextTokenBudget, desc: "Prompt-assembly budget" },
-            { key: "historyMaxTurns", env: "HISTORY_MAX_TURNS", value: c.historyMaxTurns, desc: "Multi-turn chat memory" },
-            { key: "runTokenCeiling", env: "RUN_TOKEN_CEILING", value: c.runTokenCeiling, desc: "Per-run token ceiling" },
-            { key: "apiKey", env: "OPENAI_API_KEY", value: c.openaiApiKey ? "set" : "unset", desc: "Secret — never returned" },
-          ],
-        },
-        {
-          name: "Ingestion",
-          items: [
-            { key: "scannedTextThreshold", env: "SCANNED_TEXT_THRESHOLD", value: c.scannedTextThreshold, desc: "Chars/page below → scanned" },
-            { key: "ocrDpi", env: "OCR_DPI", value: c.ocrDpi, desc: "OCR render resolution" },
-            { key: "ocrLang", env: "OCR_LANG", value: c.ocrLang, desc: "Tesseract language" },
-            { key: "visionAssist", env: "VISION_ASSIST", value: c.visionAssist, desc: "LLM re-read of low-conf OCR" },
-            { key: "visionAssistThreshold", env: "VISION_ASSIST_THRESHOLD", value: c.visionAssistThreshold, desc: "OCR conf below → vision assist" },
-            { key: "visionMaxCropsPerSheet", env: "VISION_MAX_CROPS_PER_SHEET", value: c.visionMaxCropsPerSheet, desc: "Bounded assist cost" },
-          ],
-        },
-        {
-          name: "Delta engine",
-          items: [
-            { key: "matchThreshold", env: "MATCH_THRESHOLD", value: c.matchThreshold, desc: "Max cost to accept a match" },
-            { key: "moveTolerance", env: "MOVE_TOLERANCE", value: c.moveTolerance, desc: "Displacement → 'moved'" },
-            { key: "wText", env: "W_TEXT", value: c.wText, desc: "Text-similarity weight" },
-            { key: "wSpatial", env: "W_SPATIAL", value: c.wSpatial, desc: "Spatial-distance weight" },
-            { key: "wKind", env: "W_KIND", value: c.wKind, desc: "Kind-mismatch weight" },
-            { key: "anchorMinPairs", env: "ANCHOR_MIN_PAIRS", value: c.anchorMinPairs, desc: "Min anchors for registration" },
-            { key: "enrich", env: "ENRICH", value: c.enrich, desc: "LLM description enrichment" },
-          ],
-        },
-        {
-          name: "Retrieval",
-          items: [
-            { key: "chunkTargetChars", env: "CHUNK_TARGET_CHARS", value: c.chunkTargetChars, desc: "Target chunk size" },
-            { key: "vectorTop", env: "VECTOR_TOP", value: c.vectorTop, desc: "Semantic candidates" },
-            { key: "ftsTop", env: "FTS_TOP", value: c.ftsTop, desc: "Keyword candidates" },
-            { key: "rrfK", env: "RRF_K", value: c.rrfK, desc: "Reciprocal-rank-fusion constant" },
-            { key: "retrievalK", env: "RETRIEVAL_K", value: c.retrievalK, desc: "Chunks per answer" },
-          ],
-        },
-        {
-          name: "Database",
-          items: [{ key: "url", env: "DATABASE_URL", value: dbRedacted, desc: "Postgres connection (redacted)" }],
-        },
-      ],
+      groups: SPECS.map((spec) => ({
+        name: spec.group,
+        items: spec.items.map(([key, env, desc]): Setting => {
+          let value: string | number | boolean;
+          if (key === "apiKey") value = c.openaiApiKey ? "set" : "unset";
+          else if (env === "DATABASE_URL") value = c.databaseUrl.replace(/:\/\/([^:]+):[^@]+@/, "://$1:****@");
+          else value = c[key] as string | number | boolean;
+          const type = typeof value === "boolean" ? "boolean" : typeof value === "number" ? "number" : "string";
+          return {
+            key: String(key),
+            env,
+            value,
+            type,
+            desc,
+            editable: this.config.isEditable(env) && key !== "apiKey",
+            overridden: overridden.has(env),
+          };
+        }),
+      })),
     };
   }
 }

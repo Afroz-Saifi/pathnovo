@@ -1,8 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { type Config, loadConfig } from "@pathnovo/config";
+import type { Config } from "@pathnovo/config";
 import type { CanonicalDocument, Comparison } from "@pathnovo/core";
 import { Prisma } from "@prisma/client";
 
+import { ConfigService } from "../config/config.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { RunContext } from "../observability/run.service.js";
 import { buildChunks } from "./chunking.js";
@@ -13,9 +14,15 @@ import { costUsd } from "./pricing.js";
 @Injectable()
 export class IndexingService {
   private readonly logger = new Logger(IndexingService.name);
-  private readonly config: Config = loadConfig();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  private get config(): Config {
+    return this.configService.get();
+  }
 
   get enabled(): boolean {
     return Boolean(this.config.openaiApiKey);

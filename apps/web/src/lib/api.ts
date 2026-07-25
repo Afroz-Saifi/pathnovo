@@ -56,13 +56,39 @@ export function sheetImageUrl(id: string, side: "a" | "b", index = 0): string {
   return `${API}/comparisons/${id}/sheet/${side}/${index}`;
 }
 
+export interface ConfigItem {
+  key: string;
+  env: string;
+  value: string | number | boolean;
+  type: "number" | "boolean" | "string";
+  desc: string;
+  editable: boolean;
+  overridden: boolean;
+}
+
 export interface ConfigGroup {
   name: string;
-  items: Array<{ key: string; env: string; value: string | number | boolean; desc: string }>;
+  items: ConfigItem[];
 }
 
 export async function getConfig(): Promise<{ groups: ConfigGroup[] }> {
   return json(await fetch(`${API}/config`));
+}
+
+export async function updateConfig(
+  changes: Record<string, string | number | boolean>,
+): Promise<{ groups: ConfigGroup[] }> {
+  return json(
+    await fetch(`${API}/config`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(changes),
+    }),
+  );
+}
+
+export async function resetConfig(): Promise<{ groups: ConfigGroup[] }> {
+  return json(await fetch(`${API}/config`, { method: "DELETE" }));
 }
 
 export interface RunSummary {
@@ -148,6 +174,20 @@ export interface ChatAnswer {
   confidence: "grounded" | "partial" | "not_found";
   sessionId: string;
   runId: string;
+}
+
+export interface ChatHistory {
+  sessionId: string | null;
+  messages: Array<{
+    role: "user" | "assistant";
+    content: string;
+    citations: Citation[];
+    confidence: "grounded" | "partial" | "not_found" | null;
+  }>;
+}
+
+export async function getChatHistory(comparisonId: string): Promise<ChatHistory> {
+  return json(await fetch(`${API}/comparisons/${comparisonId}/chat/history`));
 }
 
 export async function askChat(

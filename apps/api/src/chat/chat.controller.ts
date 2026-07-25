@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { BadRequestException, Body, Controller, Param, Post, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Req } from "@nestjs/common";
 
 import { ChatService } from "./chat.service.js";
 
@@ -12,6 +12,11 @@ interface AskBody {
 @Controller("comparisons/:id/chat")
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
+
+  @Get("history")
+  async history(@Param("id") id: string) {
+    return this.chat.getHistory(id);
+  }
 
   @Post()
   async ask(@Param("id") id: string, @Body() body: AskBody, @Req() req: { id?: string }) {

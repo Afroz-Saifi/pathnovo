@@ -1,10 +1,11 @@
 import { openai } from "@ai-sdk/openai";
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { type Config, loadConfig } from "@pathnovo/config";
+import type { Config } from "@pathnovo/config";
 import { generateObject } from "ai";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
+import { ConfigService } from "../config/config.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RunService } from "../observability/run.service.js";
 import { costUsd } from "./pricing.js";
@@ -33,13 +34,16 @@ export interface Citation {
 
 @Injectable()
 export class ChatService {
-  private readonly config: Config = loadConfig();
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly retrieval: RetrievalService,
     private readonly runs: RunService,
+    private readonly configService: ConfigService,
   ) {}
+
+  private get config(): Config {
+    return this.configService.get();
+  }
 
   async ask(comparisonId: string, question: string, requestId: string, sessionId?: string) {
     const comparison = await this.prisma.comparison.findUnique({ where: { id: comparisonId } });
@@ -62,7 +66,13 @@ export class ChatService {
       }
 
       const context = renderContext(retrieved.chunks);
-      const userPrompt = `Context blocks:\n${context}\n\nQuestion: ${question}`;
+      const enumNote =
+        retrieved.enumTotal !== undefined
+          ? `\n\nThe user asked to enumerate. The context contains ${retrieved.chunks.length} of ${retrieved.enumTotal} matching changes. List every one in the context; ${retrieved.enumCapped ? `state that there are ${retrieved.enumTotal} in total and these are the first ${retrieved.chunks.length}` : "this is the complete set"}.`
+          : "";
+      const userPrompt = `Context blocks:\n${context}${enumNote}\n\nQuestion: ${question}`;
+      // Enumerations need more room to list every item.
+      const maxOutput = retrieved.enumTotal !== undefined ? Math.max(this.config.llmMaxOutputTokens, 3000) : this.config.llmMaxOutputTokens;
       await run.emit("llm_call_started", {
         "gen_ai.system": "openai",
         "gen_ai.request.model": this.config.llmModel,
@@ -72,7 +82,7 @@ export class ChatService {
         model: openai(this.config.llmModel),
         schema: AnswerSchema,
         temperature: this.config.llmTemperature,
-        maxTokens: this.config.llmMaxOutputTokens,
+        maxTokens: maxOutput,
         system: SYSTEM_PROMPT,
         prompt: userPrompt,
       });
@@ -135,6 +145,25 @@ export class ChatService {
     if (confidence === "grounded" && valid.length < object.citations.length) confidence = "partial";
     if (confidence !== "not_found" && valid.length === 0) confidence = "not_found";
     return { citations: valid, confidence };
+  }
+
+  /** Most-recent chat session for a comparison, with its messages (for reload). */
+  async getHistory(comparisonId: string) {
+    const session = await this.prisma.chatSession.findFirst({
+      where: { comparisonId },
+      orderBy: { createdAt: "desc" },
+      include: { messages: { orderBy: { createdAt: "asc" } } },
+    });
+    if (!session) return { sessionId: null, messages: [] };
+    return {
+      sessionId: session.id,
+      messages: session.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+        citations: m.citations ?? [],
+        confidence: m.confidence,
+      })),
+    };
   }
 
   private async resolveSession(comparisonId: string, sessionId?: string) {

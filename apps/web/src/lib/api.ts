@@ -102,3 +102,33 @@ export async function getRun(id: string): Promise<RunDetail> {
 export async function getMetrics(): Promise<Metrics> {
   return json(await fetch(`${API}/metrics`));
 }
+
+export interface Citation {
+  source: string;
+  sheet: number | null;
+  ref: string;
+  refs: string[];
+  quote: string;
+}
+
+export interface ChatAnswer {
+  answer: string;
+  citations: Citation[];
+  confidence: "grounded" | "partial" | "not_found";
+  sessionId: string;
+  runId: string;
+}
+
+export async function askChat(
+  comparisonId: string,
+  question: string,
+  sessionId?: string,
+): Promise<ChatAnswer> {
+  return json(
+    await fetch(`${API}/comparisons/${comparisonId}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question, sessionId }),
+    }),
+  );
+}

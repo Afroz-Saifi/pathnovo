@@ -18,7 +18,10 @@ Built vertically, one runnable slice at a time.
 - [x] **Slice 3 — Web UI** (React 19 + shadcn/ui + lucide): `/pairs` upload, `/compare/:id` with a
       located delta overlay (boxes drawn from normalized bboxes) + grouped report, `/traces` with runs
       list, event waterfall, and metric cards.
-- [ ] Slice 4 — Grounded chat (hybrid retrieval + cited answers)
+- [x] **Slice 4 — Grounded chat**: chunk indexing (OpenAI embeddings) at comparison time; hybrid
+      retrieval (cosine + keyword + RRF, delta-boosted on change questions); AI SDK answers with a zod
+      citation schema, post-validated; refuses unsupported questions; `/chat/:id` UI with citation
+      chips + confidence badge; fully traced with token/cost usage.
 - [ ] Slice 5 — Scanned-PDF (OCR) adapter + eval harness + scorecard
 
 ## Architecture (one idea)

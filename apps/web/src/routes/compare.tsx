@@ -123,9 +123,11 @@ export function ComparePage() {
               <FileText className="h-4 w-4" /> report.md
             </Button>
           </a>
-          <Button variant="outline" size="sm" disabled>
-            <MessageSquare className="h-4 w-4" /> Chat (soon)
-          </Button>
+          <Link to={`/chat/${id}`}>
+            <Button variant="outline" size="sm">
+              <MessageSquare className="h-4 w-4" /> Chat
+            </Button>
+          </Link>
         </div>
       </div>
 

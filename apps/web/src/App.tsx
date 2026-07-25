@@ -2,6 +2,7 @@ import { FileDiff, GitCompareArrows, Activity } from "lucide-react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 
 import { cn } from "./lib/utils";
+import { ChatPage } from "./routes/chat";
 import { ComparePage } from "./routes/compare";
 import { PairsPage } from "./routes/pairs";
 import { TracesPage } from "./routes/traces";
@@ -43,6 +44,7 @@ export function App() {
           <Route path="/" element={<Navigate to="/pairs" replace />} />
           <Route path="/pairs" element={<PairsPage />} />
           <Route path="/compare/:id" element={<ComparePage />} />
+          <Route path="/chat/:id" element={<ChatPage />} />
           <Route path="/traces" element={<TracesPage />} />
         </Routes>
       </main>

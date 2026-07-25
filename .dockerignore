@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+out
+eval/results
+.git
+diagrams
+TECHNICAL-DESIGN.md
+*.log

@@ -25,8 +25,8 @@ Built vertically, one runnable slice at a time.
 - [x] **Slice 5a — Eval harness** (`make eval`): delta precision/recall/F1 against exact ground truth
       (in-process), plus chat groundedness / correctness / refusal against the running API; prints a
       scorecard, writes timestamped results, and diffs two runs (`make eval-compare`) for regressions.
+- [x] **`docker compose up` one-command**: Postgres + API container, migrate + seed the demo pair on boot.
 - [ ] Slice 5b — Scanned-PDF (OCR) adapter (tesseract.js) — the 3rd format (bonus)
-- [ ] `docker compose up` full one-command (API container + seed)
 
 ## Architecture (one idea)
 
@@ -60,18 +60,19 @@ pnpm --filter @pathnovo/api delta -- <pidA.pdf> <pidB.pdf>
 # → writes out/<comparison-id>/delta-report.{md,json}
 ```
 
-Or run the traced API (slice 2):
+Or the traced API — one command brings up Postgres + the API, runs migrations, and
+seeds the demo comparison (put your `OPENAI_API_KEY` in `.env` first for chat):
 
 ```bash
-docker compose up -d db
-cd apps/api && cp ../../.env.example .env && pnpm prisma:migrate:dev && pnpm build && pnpm start
+docker compose up
 ```
 
 ```bash
-# POST two revisions → traced comparison
+# the demo pair is pre-seeded; or POST your own two revisions:
 curl -F "a=@data/samples/pair-1/revA.pdf" -F "b=@data/samples/pair-1/revB.pdf" \
   http://localhost:3001/comparisons
 # then: GET /comparisons/:id/report.md · GET /runs/:id (trace waterfall) · GET /metrics
+# chat:  POST /comparisons/:id/chat  {"question":"what changed?"}
 ```
 
 And the web UI (slice 3):

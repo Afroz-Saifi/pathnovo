@@ -15,5 +15,20 @@ services:
       timeout: 3s
       retries: 20
 
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/pathnovo
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PORT: "3001"
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+
 volumes:
   pgdata:

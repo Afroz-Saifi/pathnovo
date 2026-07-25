@@ -4,6 +4,7 @@ import { Module } from "@nestjs/common";
 import { LoggerModule } from "nestjs-pino";
 
 import { ComparisonsModule } from "./comparisons/comparisons.module.js";
+import { ConfigController } from "./config/config.controller.js";
 import { HealthController } from "./health/health.controller.js";
 import { ObservabilityModule } from "./observability/observability.module.js";
 import { PrismaModule } from "./prisma/prisma.module.js";
@@ -25,6 +26,6 @@ import { PrismaModule } from "./prisma/prisma.module.js";
     ObservabilityModule,
     ComparisonsModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, ConfigController],
 })
 export class AppModule {}

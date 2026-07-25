@@ -56,6 +56,15 @@ export function sheetImageUrl(id: string, side: "a" | "b", index = 0): string {
   return `${API}/comparisons/${id}/sheet/${side}/${index}`;
 }
 
+export interface ConfigGroup {
+  name: string;
+  items: Array<{ key: string; env: string; value: string | number | boolean; desc: string }>;
+}
+
+export async function getConfig(): Promise<{ groups: ConfigGroup[] }> {
+  return json(await fetch(`${API}/config`));
+}
+
 export interface RunSummary {
   id: string;
   kind: string;

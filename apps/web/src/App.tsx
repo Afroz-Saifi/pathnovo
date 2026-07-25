@@ -1,9 +1,11 @@
-import { FileDiff, GitCompareArrows, Activity } from "lucide-react";
+import { FileDiff, GitCompareArrows, Activity, Layers, Settings } from "lucide-react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 
 import { cn } from "./lib/utils";
 import { ChatPage } from "./routes/chat";
 import { ComparePage } from "./routes/compare";
+import { ComparisonsPage } from "./routes/comparisons";
+import { ConfigPage } from "./routes/config";
 import { PairsPage } from "./routes/pairs";
 import { TracesPage } from "./routes/traces";
 
@@ -34,18 +36,22 @@ export function App() {
             Pathnovo
           </div>
           <nav className="flex items-center gap-1">
-            <NavItem to="/pairs" icon={GitCompareArrows} label="Pairs" />
+            <NavItem to="/comparisons" icon={Layers} label="Comparisons" />
+            <NavItem to="/pairs" icon={GitCompareArrows} label="New" />
             <NavItem to="/traces" icon={Activity} label="Traces" />
+            <NavItem to="/config" icon={Settings} label="Config" />
           </nav>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">
         <Routes>
-          <Route path="/" element={<Navigate to="/pairs" replace />} />
+          <Route path="/" element={<Navigate to="/comparisons" replace />} />
+          <Route path="/comparisons" element={<ComparisonsPage />} />
           <Route path="/pairs" element={<PairsPage />} />
           <Route path="/compare/:id" element={<ComparePage />} />
           <Route path="/chat/:id" element={<ChatPage />} />
           <Route path="/traces" element={<TracesPage />} />
+          <Route path="/config" element={<ConfigPage />} />
         </Routes>
       </main>
     </div>

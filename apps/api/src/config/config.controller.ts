@@ -11,7 +11,19 @@ interface Setting {
   desc: string;
   editable: boolean;
   overridden: boolean;
+  /** Fixed choices → the UI renders a dropdown. */
+  options?: string[];
 }
+
+/** Env vars with a known set of valid values (rendered as dropdowns). */
+const OPTIONS: Record<string, string[]> = {
+  LLM_PROVIDER: ["openai"],
+  LLM_MODEL: ["gpt-4o-mini", "gpt-4o"],
+  VISION_MODEL: ["gpt-4o", "gpt-4o-mini"],
+  JUDGE_MODEL: ["gpt-4o", "gpt-4o-mini"],
+  EMBEDDING_MODEL: ["text-embedding-3-small", "text-embedding-3-large"],
+  OCR_LANG: ["eng"],
+};
 
 // [key, env, description] — key indexes into Config; env is the var name.
 const SPECS: Array<{ group: string; items: Array<[keyof Config | "apiKey", string, string]> }> = [
@@ -105,6 +117,10 @@ export class ConfigController {
           else if (env === "DATABASE_URL") value = c.databaseUrl.replace(/:\/\/([^:]+):[^@]+@/, "://$1:****@");
           else value = c[key] as string | number | boolean;
           const type = typeof value === "boolean" ? "boolean" : typeof value === "number" ? "number" : "string";
+          const base = OPTIONS[env];
+          // Keep a custom env-set value selectable so it isn't lost.
+          const options =
+            base && typeof value === "string" && !base.includes(value) ? [value, ...base] : base;
           return {
             key: String(key),
             env,
@@ -113,6 +129,7 @@ export class ConfigController {
             desc,
             editable: this.config.isEditable(env) && key !== "apiKey",
             overridden: overridden.has(env),
+            ...(options ? { options } : {}),
           };
         }),
       })),

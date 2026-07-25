@@ -20,15 +20,38 @@ function Field({
   if (!item.editable) {
     return <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{String(item.value)}</span>;
   }
+
+  const selectClass =
+    "w-40 rounded border bg-background px-2 py-0.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+  // Boolean → On/Off dropdown.
   if (item.type === "boolean") {
     return (
-      <input
-        type="checkbox"
-        checked={Boolean(value)}
-        onChange={(e) => onChange(e.target.checked)}
-      />
+      <select
+        className={selectClass}
+        value={value ? "on" : "off"}
+        onChange={(e) => onChange(e.target.value === "on")}
+      >
+        <option value="on">on</option>
+        <option value="off">off</option>
+      </select>
     );
   }
+
+  // Known choices → dropdown.
+  if (item.options && item.options.length > 0) {
+    return (
+      <select className={selectClass} value={String(value)} onChange={(e) => onChange(e.target.value)}>
+        {item.options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  // Free numeric / text value.
   return (
     <input
       type={item.type === "number" ? "number" : "text"}

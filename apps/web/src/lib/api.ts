@@ -64,6 +64,7 @@ export interface ConfigItem {
   desc: string;
   editable: boolean;
   overridden: boolean;
+  options?: string[];
 }
 
 export interface ConfigGroup {

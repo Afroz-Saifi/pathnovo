@@ -72,13 +72,22 @@ export interface ConfigGroup {
   items: ConfigItem[];
 }
 
-export async function getConfig(): Promise<{ groups: ConfigGroup[] }> {
+export interface ConfigResponse {
+  catalog: {
+    providers: string[];
+    chatModels: Record<string, string[]>;
+    embeddingModels: string[];
+  };
+  groups: ConfigGroup[];
+}
+
+export async function getConfig(): Promise<ConfigResponse> {
   return json(await fetch(`${API}/config`));
 }
 
 export async function updateConfig(
   changes: Record<string, string | number | boolean>,
-): Promise<{ groups: ConfigGroup[] }> {
+): Promise<ConfigResponse> {
   return json(
     await fetch(`${API}/config`, {
       method: "PATCH",
@@ -88,7 +97,7 @@ export async function updateConfig(
   );
 }
 
-export async function resetConfig(): Promise<{ groups: ConfigGroup[] }> {
+export async function resetConfig(): Promise<ConfigResponse> {
   return json(await fetch(`${API}/config`, { method: "DELETE" }));
 }
 

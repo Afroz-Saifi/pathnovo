@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Patch } from "@nestjs/common";
 import type { Config } from "@pathnovo/config";
 
+import { CHAT_MODELS, EMBEDDING_MODELS, PROVIDERS } from "../chat/model-catalog.js";
 import { ConfigService } from "./config.service.js";
 
 interface Setting {
@@ -15,13 +16,9 @@ interface Setting {
   options?: string[];
 }
 
-/** Env vars with a known set of valid values (rendered as dropdowns). */
+// Provider + model dropdowns are provider-aware and driven by `catalog` in the
+// response; only static option sets live here.
 const OPTIONS: Record<string, string[]> = {
-  LLM_PROVIDER: ["openai"],
-  LLM_MODEL: ["gpt-4o-mini", "gpt-4o"],
-  VISION_MODEL: ["gpt-4o", "gpt-4o-mini"],
-  JUDGE_MODEL: ["gpt-4o", "gpt-4o-mini"],
-  EMBEDDING_MODEL: ["text-embedding-3-small", "text-embedding-3-large"],
   OCR_LANG: ["eng"],
 };
 
@@ -105,10 +102,15 @@ export class ConfigController {
     return this.build();
   }
 
-  private build(): { groups: Array<{ name: string; items: Setting[] }> } {
+  private build() {
     const c = this.config.get();
     const overridden = new Set(this.config.overriddenEnvKeys());
     return {
+      catalog: {
+        providers: [...PROVIDERS],
+        chatModels: CHAT_MODELS,
+        embeddingModels: EMBEDDING_MODELS,
+      },
       groups: SPECS.map((spec) => ({
         name: spec.group,
         items: spec.items.map(([key, env, desc]): Setting => {

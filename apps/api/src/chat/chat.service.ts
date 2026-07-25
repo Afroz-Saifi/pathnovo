@@ -1,4 +1,3 @@
-import { openai } from "@ai-sdk/openai";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Config } from "@pathnovo/config";
 import { generateObject } from "ai";
@@ -8,6 +7,7 @@ import { z } from "zod";
 import { ConfigService } from "../config/config.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { RunService } from "../observability/run.service.js";
+import { resolveChatModel } from "./model-catalog.js";
 import { costUsd } from "./pricing.js";
 import { type RetrievedChunk, RetrievalService } from "./retrieval.service.js";
 
@@ -74,12 +74,12 @@ export class ChatService {
       // Enumerations need more room to list every item.
       const maxOutput = retrieved.enumTotal !== undefined ? Math.max(this.config.llmMaxOutputTokens, 3000) : this.config.llmMaxOutputTokens;
       await run.emit("llm_call_started", {
-        "gen_ai.system": "openai",
+        "gen_ai.system": this.config.llmProvider,
         "gen_ai.request.model": this.config.llmModel,
       });
       const t0 = Date.now();
       const { object, usage } = await generateObject({
-        model: openai(this.config.llmModel),
+        model: resolveChatModel(this.config.llmProvider, this.config.llmModel),
         schema: AnswerSchema,
         temperature: this.config.llmTemperature,
         maxTokens: maxOutput,
@@ -91,7 +91,7 @@ export class ChatService {
       await run.emit(
         "llm_call_completed",
         {
-          "gen_ai.system": "openai",
+          "gen_ai.system": this.config.llmProvider,
           "gen_ai.request.model": this.config.llmModel,
           "gen_ai.usage.input_tokens": inTok,
           "gen_ai.usage.output_tokens": outTok,
@@ -102,7 +102,7 @@ export class ChatService {
         { durationMs: Date.now() - t0 },
       );
       await run.recordUsage({
-        provider: "openai",
+        provider: this.config.llmProvider,
         model: this.config.llmModel,
         inputTokens: inTok,
         outputTokens: outTok,

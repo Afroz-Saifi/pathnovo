@@ -10,10 +10,12 @@ import { type ConfigItem, getConfig, resetConfig, updateConfig } from "../lib/ap
 function Field({
   item,
   draft,
+  options,
   onChange,
 }: {
   item: ConfigItem;
   draft: string | number | boolean | undefined;
+  options?: string[];
   onChange: (v: string | number | boolean) => void;
 }) {
   const value = draft ?? item.value;
@@ -38,11 +40,13 @@ function Field({
     );
   }
 
-  // Known choices → dropdown.
-  if (item.options && item.options.length > 0) {
+  // Known choices → dropdown (keep the current value selectable).
+  const opts = options ?? item.options;
+  if (opts && opts.length > 0) {
+    const list = opts.includes(String(value)) ? opts : [String(value), ...opts];
     return (
       <select className={selectClass} value={String(value)} onChange={(e) => onChange(e.target.value)}>
-        {item.options.map((o) => (
+        {list.map((o) => (
           <option key={o} value={o}>
             {o}
           </option>
@@ -86,6 +90,19 @@ export function ConfigPage() {
 
   const dirty = Object.keys(draft).length > 0;
   const anyOverride = data?.groups.some((g) => g.items.some((i) => i.overridden));
+
+  // Provider-aware option lists for the model dropdowns.
+  const catalog = data?.catalog;
+  const providerItem = data?.groups.flatMap((g) => g.items).find((i) => i.env === "LLM_PROVIDER");
+  const provider = String(draft["LLM_PROVIDER"] ?? providerItem?.value ?? "openai");
+  function optionsFor(env: string): string[] | undefined {
+    if (!catalog) return undefined;
+    if (env === "LLM_PROVIDER") return catalog.providers;
+    if (env === "LLM_MODEL" || env === "VISION_MODEL" || env === "JUDGE_MODEL")
+      return catalog.chatModels[provider] ?? [];
+    if (env === "EMBEDDING_MODEL") return catalog.embeddingModels;
+    return undefined;
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -133,7 +150,12 @@ export function ConfigPage() {
                         <div className="font-mono text-[11px] text-muted-foreground">{it.env}</div>
                       </td>
                       <td className="px-4 py-2 align-top">
-                        <Field item={it} draft={draft[it.env]} onChange={(v) => setDraft((d) => ({ ...d, [it.env]: v }))} />
+                        <Field
+                          item={it}
+                          draft={draft[it.env]}
+                          options={optionsFor(it.env)}
+                          onChange={(v) => setDraft((d) => ({ ...d, [it.env]: v }))}
+                        />
                       </td>
                       <td className="px-4 py-2 align-top text-xs text-muted-foreground">{it.desc}</td>
                     </tr>

@@ -28,17 +28,62 @@ model Document {
 }
 
 model Comparison {
-  id             String       @id
+  id             String        @id
   pidA           String
   pidB           String
-  status         String       @default("complete")
+  status         String        @default("complete")
   registration   Json
   configSnapshot Json
   summary        Json
   entries        DeltaEntry[]
-  createdAt      DateTime     @default(now())
+  chunks         Chunk[]
+  chatSessions   ChatSession[]
+  createdAt      DateTime      @default(now())
 
   @@map("comparisons")
+}
+
+// Retrieval chunk. Embedding stored as a plain float array; at this scale
+// (tens of chunks per comparison) hybrid retrieval runs in-process. pgvector
+// is the drop-in for larger corpora.
+model Chunk {
+  id           String     @id @default(cuid())
+  comparisonId String
+  comparison   Comparison @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  sourceType   String // pidA | pidB | delta
+  sheet        Int?
+  text         String
+  refs         Json
+  embedding    Float[]
+  createdAt    DateTime   @default(now())
+
+  @@index([comparisonId])
+  @@map("chunks")
+}
+
+model ChatSession {
+  id           String        @id @default(cuid())
+  comparisonId String
+  comparison   Comparison    @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  messages     ChatMessage[]
+  createdAt    DateTime      @default(now())
+
+  @@index([comparisonId])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id         String      @id @default(cuid())
+  sessionId  String
+  session    ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role       String // user | assistant
+  content    String
+  citations  Json?
+  confidence String?
+  createdAt  DateTime    @default(now())
+
+  @@index([sessionId])
+  @@map("chat_messages")
 }
 
 model DeltaEntry {

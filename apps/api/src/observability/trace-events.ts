@@ -11,6 +11,7 @@ export const TRACE_EVENT_TYPES = [
   "canonical_persisted",
   "delta_computed",
   "comparison_persisted",
+  "chunks_indexed",
   "stage_failed",
   // chat path (later slices)
   "retrieval_completed",
@@ -30,6 +31,7 @@ export const MANDATORY_ATTRIBUTES: Record<TraceEventType, readonly string[]> = {
   canonical_persisted: ["pid", "items"],
   delta_computed: ["added", "removed", "modified", "anchor_pairs"],
   comparison_persisted: ["comparisonId", "entries"],
+  chunks_indexed: ["chunks"],
   stage_failed: ["stage", "error_type"],
   retrieval_completed: ["vector_hits", "fts_hits", "fused_k"],
   llm_call_started: ["gen_ai.system", "gen_ai.request.model"],

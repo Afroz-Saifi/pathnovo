@@ -7,6 +7,7 @@ import type { CanonicalDocument, Comparison, DeltaEntry } from "@pathnovo/core";
 import { computeDelta, detectFormat, toMarkdown } from "@pathnovo/pipeline";
 import { Prisma } from "@prisma/client";
 
+import { IndexingService } from "../chat/indexing.service.js";
 import { PrismaService } from "../prisma/prisma.service.js";
 import type { RunContext } from "../observability/run.service.js";
 import { RunService } from "../observability/run.service.js";
@@ -23,6 +24,7 @@ export class ComparisonsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly runs: RunService,
+    private readonly indexing: IndexingService,
   ) {}
 
   async createFromFiles(a: UploadedDoc, b: UploadedDoc, requestId: string) {
@@ -50,6 +52,13 @@ export class ComparisonsService {
         comparisonId: comparison.id,
         entries: comparison.entries.length,
       });
+
+      await run.span(
+        "chunks_indexed",
+        () => this.indexing.indexComparison(comparison, docA, docB, run),
+        (chunks) => ({ chunks }),
+      );
+
       await run.finish("ok", { comparisonId: comparison.id });
 
       return { comparisonId: comparison.id, runId: run.runId, summary: comparison.summary };
@@ -101,6 +110,9 @@ export class ComparisonsService {
   }
 
   private async persistComparison(c: Comparison): Promise<void> {
+    // Re-ingesting the same pair yields the same deterministic id; replace it
+    // (cascade clears prior entries, chunks, and chat) so runs are idempotent.
+    await this.prisma.comparison.deleteMany({ where: { id: c.id } });
     await this.prisma.comparison.create({
       data: {
         id: c.id,
